@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "NW_Market_OCR": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\kirch\\Pictures\\market screencap full screen 2.png\""
+    }
+  }
+}
