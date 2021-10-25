@@ -7,12 +7,18 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace NW_Market_OCR
 {
     class Program
     {
+        private const int IN_MARKET_DELAY = 5_000;
+        private const int OUT_OF_MARKET_DELAY = 30_000;
+
+        // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
+
         static void Main(string[] args)
         {
             Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
@@ -21,44 +27,40 @@ namespace NW_Market_OCR
 
             while (true)
             {
-                Console.WriteLine("Waiting for next input... (c = capture, q = quit)");
-                string input = Console.ReadKey().KeyChar.ToString();
-
-                if (input == "q")
-                {
-                    break;
-                }
+                Console.WriteLine("Checking to see if you're at the market...");
+                DateTime startTime = DateTime.UtcNow;
 
                 string path = SaveImageOfPrimaryScreen();
 
                 string processedPath = CleanInputImage(path);
 
-                Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractTextFromNewWorldMarketImageUsingIron(processedPath);
-
-                List<MarketListing> marketListings = new List<MarketListing>();
-                foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight)
+                if (IsImageShowingMarket(processedPath))
                 {
-                    marketListings.Add(ValidateAndFixMarketListing(CreateMarketListing(wordBucket.Value)));
+                    Console.Write("Found market interface, processing market listings... ");
 
-                    Console.Write($"Bucket @ Y={wordBucket.Key}\n");
+                    UpdateDatabaseWithMarketListings(database, processedPath);
 
-                    foreach (OcrTextArea word in wordBucket.Value)
-                    {
-                        Console.Write($"\t{word.X}, {word.Y} - {word.Text}\n");
-                    }
-
-                    Console.Write("\n\n");
+                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                    int timeToWait = Math.Clamp(IN_MARKET_DELAY - timePassed, 0, IN_MARKET_DELAY);
+                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
+                    Thread.Sleep(timeToWait);
                 }
-
-                foreach (MarketListing marketListing in marketListings)
+                else
                 {
-                    Console.Write($"{marketListing}\n");
+                    Console.Write("No market interface... ");
+
+                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                    int timeToWait = Math.Clamp(OUT_OF_MARKET_DELAY - timePassed, 0, OUT_OF_MARKET_DELAY);
+                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
+                    Thread.Sleep(timeToWait);
                 }
-
-                database.Listings.AddRange(marketListings);
-
-                SaveDatabaseToDisk(database);
             }
+        }
+
+        private static bool IsImageShowingMarket(string processedPath)
+        {
+            string marketHeaderText = ExtractMarketHeaderTextFromNewWorldMarketImageUsingIron(processedPath);
+            return marketHeaderText.Contains("showing") || marketHeaderText.Contains("orders") || marketHeaderText.Contains("at");
         }
 
         private static void SaveDatabaseToDisk(MarketDatabase database)
@@ -84,7 +86,25 @@ namespace NW_Market_OCR
             }
         }
 
-        private static Dictionary<int, List<OcrTextArea>> ExtractTextFromNewWorldMarketImageUsingIron(string processedPath)
+        private static string ExtractMarketHeaderTextFromNewWorldMarketImageUsingIron(string processedPath)
+        {
+            IronTesseract Ocr = new();
+            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
+            Ocr.Configuration.BlackListCharacters = "`";
+            using (var Input = new OcrInput())
+            {
+                var ContentArea = new Rectangle() { X = 1350, Y = 135, Width = 150, Height = 30 };
+                Input.AddImage(processedPath, ContentArea);
+
+                OcrResult Result = Ocr.Read(Input);
+
+                Console.WriteLine($"Found market header text '{Result.Text}'.");
+
+                return Result.Text.ToLowerInvariant();
+            }
+        }
+
+        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImageUsingIron(string processedPath)
         {
             Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
 
@@ -266,6 +286,78 @@ namespace NW_Market_OCR
 
             Console.WriteLine($"Cleaned image saved to '{processedPath}'");
             return processedPath;
+        }
+
+        private static List<MarketListing> previousMarketListings = new List<MarketListing>();
+
+        private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath)
+        {
+            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImageUsingIron(processedPath);
+
+            List<MarketListing> marketListings = new List<MarketListing>();
+            foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight)
+            {
+                marketListings.Add(ValidateAndFixMarketListing(CreateMarketListing(wordBucket.Value)));
+
+                //Console.Write($"Bucket @ Y={wordBucket.Key}\n");
+
+                //foreach (OcrTextArea word in wordBucket.Value)
+                //{
+                //    Console.Write($"\t{word.X}, {word.Y} - {word.Text}\n");
+                //}
+
+                //Console.Write("\n\n");
+            }
+
+            if (IsSimilarSetOfMarketListings(marketListings))
+            {
+                return;
+            }
+
+            previousMarketListings = marketListings;
+
+            foreach (MarketListing marketListing in marketListings)
+            {
+                Console.WriteLine($"{marketListing}");
+            }
+
+            database.Listings.AddRange(marketListings);
+
+            // TODO: Purge entries older than 1 week
+
+            SaveDatabaseToDisk(database);
+
+            // TODO: Upload database somewhere to share
+        }
+
+        private static bool IsSimilarSetOfMarketListings(List<MarketListing> marketListings)
+        {
+            bool foundDuplicateListings = false;
+            if (previousMarketListings.Count == marketListings.Count)
+            {
+                int matchingDatapoints = 0;
+
+                for (int i = 0; i < marketListings.Count; i++)
+                {
+                    MarketListing previous = previousMarketListings[i];
+                    MarketListing current = marketListings[i];
+
+                    matchingDatapoints += previous.Available == current.Available ? 1 : 0;
+                    matchingDatapoints += previous.Location == current.Location ? 1 : 0;
+                    matchingDatapoints += previous.Name == current.Name ? 1 : 0;
+                    matchingDatapoints += previous.Owned == current.Owned ? 1 : 0;
+                    matchingDatapoints += previous.Price == current.Price ? 1 : 0;
+                }
+
+                // If enough of the data is the same from the previous run, exit without updating the database
+                if (matchingDatapoints >= 20)
+                {
+                    Console.WriteLine($"Found {matchingDatapoints} matching datapoints from the previous run, skipping database update...");
+                    foundDuplicateListings = true;
+                }
+            }
+
+            return foundDuplicateListings;
         }
     }
 
