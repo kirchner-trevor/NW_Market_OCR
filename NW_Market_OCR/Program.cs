@@ -1,10 +1,12 @@
-﻿using IronOcr;
+﻿using Aspose.OCR;
+using IronOcr;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows.Forms;
 
 namespace NW_Market_OCR
@@ -15,26 +17,32 @@ namespace NW_Market_OCR
         {
             Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
-            string input = "";
-            while (input != "q")
+            MarketDatabase database = LoadDatabaseFromDisk();
+
+            while (true)
             {
                 Console.WriteLine("Waiting for next input... (c = capture, q = quit)");
-                input = Console.ReadKey().KeyChar.ToString();
+                string input = Console.ReadKey().KeyChar.ToString();
+
+                if (input == "q")
+                {
+                    break;
+                }
 
                 string path = SaveImageOfPrimaryScreen();
 
                 string processedPath = CleanInputImage(path);
 
-                Dictionary<int, List<OcrResult.Word>> wordBucketsByHeight = ExtractTextFromNewWorldMarketImage(processedPath);
+                Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractTextFromNewWorldMarketImageUsingIron(processedPath);
 
                 List<MarketListing> marketListings = new List<MarketListing>();
-                foreach (KeyValuePair<int, List<OcrResult.Word>> wordBucket in wordBucketsByHeight)
+                foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight)
                 {
-                    marketListings.Add(CreateMarketListing(wordBucket.Value));
+                    marketListings.Add(ValidateAndFixMarketListing(CreateMarketListing(wordBucket.Value)));
 
                     Console.Write($"Bucket @ Y={wordBucket.Key}\n");
 
-                    foreach (OcrResult.Word word in wordBucket.Value)
+                    foreach (OcrTextArea word in wordBucket.Value)
                     {
                         Console.Write($"\t{word.X}, {word.Y} - {word.Text}\n");
                     }
@@ -46,12 +54,39 @@ namespace NW_Market_OCR
                 {
                     Console.Write($"{marketListing}\n");
                 }
+
+                database.Listings.AddRange(marketListings);
+
+                SaveDatabaseToDisk(database);
             }
         }
 
-        private static Dictionary<int, List<OcrResult.Word>> ExtractTextFromNewWorldMarketImage(string processedPath)
+        private static void SaveDatabaseToDisk(MarketDatabase database)
         {
-            Dictionary<int, List<OcrResult.Word>> wordBucketsByHeight = new();
+            Console.WriteLine("Saving database to disk...");
+            string json = JsonSerializer.Serialize(database);
+            string databasePath = Path.Combine(Directory.GetCurrentDirectory(), "database.json");
+            File.WriteAllText(databasePath, json);
+        }
+
+        private static MarketDatabase LoadDatabaseFromDisk()
+        {
+            Console.WriteLine("Loading database from disk...");
+            string databasePath = Path.Combine(Directory.GetCurrentDirectory(), "database.json");
+            if (File.Exists(databasePath))
+            {
+                string json = File.ReadAllText(databasePath);
+                return JsonSerializer.Deserialize<MarketDatabase>(json);
+            }
+            else
+            {
+                return new MarketDatabase();
+            }
+        }
+
+        private static Dictionary<int, List<OcrTextArea>> ExtractTextFromNewWorldMarketImageUsingIron(string processedPath)
+        {
+            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
 
             IronTesseract Ocr = new();
             Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
@@ -65,32 +100,58 @@ namespace NW_Market_OCR
 
                 foreach (var page in Result.Pages)
                 {
-                    Console.Write($"Page @ {page.X},{page.Y}\n");
-
                     foreach (var line in page.Lines)
                     {
-                        Console.Write($"Line @ {line.X},{line.Y}\n");
-
                         foreach (var word in line.Words)
                         {
-                            Console.Write($"\t{word.X}, {word.Y} - {word.Text}\n");
-
                             // Find the group within 100 of the words Y value
                             int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < 100);
                             if (wordBucketsByHeight.ContainsKey(yGroupKey))
                             {
-                                wordBucketsByHeight[yGroupKey].Add(word);
+                                wordBucketsByHeight[yGroupKey].Add(new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y });
                             }
                             else
                             {
-                                wordBucketsByHeight.Add(word.Y, new List<OcrResult.Word> { word });
+                                wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y } });
                             }
                         }
-
-                        Console.Write("\n\n");
                     }
+                }
+            }
 
-                    Console.Write("\n\n");
+            return wordBucketsByHeight;
+        }
+
+        private static Dictionary<int, List<OcrTextArea>> ExtractTextFromNewWorldMarketImageUsingAspose(string processedPath)
+        {
+            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
+
+            AsposeOcr Ocr = new();
+
+            RecognitionResult result = Ocr.RecognizeImage(processedPath, new RecognitionSettings
+            {
+                IgnoredCharacters = "`",
+                RecognitionAreas = new List<Rectangle>
+                {
+                    new Rectangle() { X = 690, Y = 340, Width = 1140, Height = 660 },
+                }
+            });
+
+
+            for(int i = 0; i < result.RecognitionLinesResult.Count; i++)
+            {
+                Rectangle wordRectangle = result.RecognitionLinesResult[i].Line;
+                string wordText = result.RecognitionLinesResult[i].TextInLine;
+
+                // Find the group within 100 of the words Y value
+                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - wordRectangle.Y) < 100);
+                if (wordBucketsByHeight.ContainsKey(yGroupKey))
+                {
+                    wordBucketsByHeight[yGroupKey].Add(new OcrTextArea { Text = wordText, X = wordRectangle.X, Y = wordRectangle.Y });;
+                }
+                else
+                {
+                    wordBucketsByHeight.Add(wordRectangle.Y, new List<OcrTextArea> { new OcrTextArea { Text = wordText, X = wordRectangle.X, Y = wordRectangle.Y } });
                 }
             }
 
@@ -124,11 +185,11 @@ namespace NW_Market_OCR
             return path;
         }
 
-        private static MarketListing CreateMarketListing(List<OcrResult.Word> looseWordLine)
+        private static MarketListing CreateMarketListing(List<OcrTextArea> looseWordLine)
         {
             MarketListing marketListing = new MarketListing();
 
-            foreach (OcrResult.Word word in looseWordLine)
+            foreach (OcrTextArea word in looseWordLine)
             {
                 if (word.X > 1550 && word.X < 2050)
                 {
@@ -166,6 +227,14 @@ namespace NW_Market_OCR
             return marketListing;
         }
 
+        private static MarketListing ValidateAndFixMarketListing(MarketListing marketListing)
+        {
+            // TODO: Find the nearest item name and the nearest town name from the database of items and towns and fix them
+
+            // TODO: We know that market listings are sorted by price, so we can do a sanity check on the prices and try and correct them
+            return marketListing;
+        }
+
         private static string CleanInputImage(string path)
         {
             string fileDirectory = Path.GetDirectoryName(path);
@@ -200,17 +269,42 @@ namespace NW_Market_OCR
         }
     }
 
+    public class OcrTextArea
+    {
+        public int X;
+        public int Y;
+        public string Text;
+    }
+
+    [Serializable]
     public class MarketListing
     {
-        public string Name;
-        public float Price;
-        public int Available;
-        public int Owned;
-        public string Location;
+        public MarketListing()
+        {
+            Time = DateTime.UtcNow;
+        }
+
+        public string Name { get; set; }
+        public float Price { get; set; }
+        public int Available { get; set; }
+        public int Owned { get; set; }
+        public string Location { get; set; }
+        public DateTime Time { get; set; }
 
         public override string ToString()
         {
-            return $"{Name} ${Price} x{Available} xo{Owned} @{Location}";
+            return $"({Time}) {Name} ${Price} x{Available} xo{Owned} @{Location}";
         }
+    }
+
+    [Serializable]
+    public class MarketDatabase
+    {
+        public MarketDatabase()
+        {
+            Listings = new List<MarketListing>();
+        }
+
+        public List<MarketListing> Listings { get; set; }
     }
 }
