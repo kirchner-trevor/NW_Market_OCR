@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Aspose.OCR" Version="21.10.0" />
+    <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
     <PackageReference Include="IronOcr" Version="2021.9.0" />
   </ItemGroup>
 

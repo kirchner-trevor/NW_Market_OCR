@@ -8,17 +8,19 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace NW_Market_OCR
 {
     class Program
     {
-        private const int IN_MARKET_DELAY = 5_000;
+        private const int IN_MARKET_DELAY = 6_000;
         private const int OUT_OF_MARKET_DELAY = 15_000;
         // Set your mouse on the next page button when this is true and it will click through the pages
         private const bool AUTOMATIC_MARKET_BROWSING = true;
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 40;
+        private static Point NEXT_PAGE = new Point(1800, 227);
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
 
@@ -32,10 +34,19 @@ namespace NW_Market_OCR
 
         // TODO: Generate "trade-routes" where it generates a trip plan where you buy/sell items at each stop in an efficient way (e.g. In Windsward Sell Ironhide & Buy Silkweed, Then in Monarch's Bluff Sell Silkweek & Buy Iron Ore, Then in Everfall...)
 
+        private static List<NwdbInfoApi.ItemsPageData> itemsDatabase = new List<NwdbInfoApi.ItemsPageData>();
+        private static string[] itemsNames = new string[0];
+        private static string[] locationNames = new[] { "Mountainhome", "Mountainrise", "Last Stand", "Cleave's Point", "Eastburn", "Valor Hold", "Mourningdale", "Brightwood", "Weaver's Fen", "Ebonscale Reach", "Everfall", "Restless Shore", "Monarch's Bluff", "Reekwater", "Windsward", "Cutlass Keys", "First Light" };
+
         [STAThread]
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            bool isBottomOfMarketPage = true; 
+            bool isBottomOfMarketPage = true;
+
+            Console.WriteLine($"Loading item database...");
+            itemsDatabase = await new NwdbInfoApi().ListItemsAsync();
+            itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
+
             Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
             MarketDatabase database = LoadDatabaseFromDisk();
@@ -63,10 +74,10 @@ namespace NW_Market_OCR
 
                         if (isBottomOfMarketPage)
                         {
-                            // TODO : Move mouse to click next page
+                            // TODO : Move mouse to next page button
 
                             AutoInput.Click();
-                            AutoInput.MouseEntropy();
+                            AutoInput.MouseEntropy(NEXT_PAGE);
                             //isBottomOfMarketPage = false;
                         }
                         else
@@ -287,10 +298,55 @@ namespace NW_Market_OCR
 
         private static MarketListing ValidateAndFixMarketListing(MarketListing marketListing)
         {
-            // TODO: Find the nearest item name and the nearest town name from the database of items and towns and fix them
+            (string newName, int nameDistance) = Autocorrect(marketListing.Name, itemsNames);
+            if (nameDistance > 0)
+            {
+                Console.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
+            }
+            marketListing.Name = newName;
+
+            (string newLocation, int locationDistance) = Autocorrect(marketListing.Location, locationNames);
+            if (locationDistance > 0)
+            {
+                Console.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
+            }
+            marketListing.Location = newLocation;
 
             // TODO: We know that market listings are sorted by price, so we can do a sanity check on the prices and try and correct them
+
             return marketListing;
+        }
+
+        private static (string Value, int Distance) Autocorrect(string value, string[] potentialValues)
+        {
+            if (value == null || value.Length <= 3)
+            {
+                return (value, -1);
+            }
+
+            string simplifyString(string complexString) => complexString?.Replace(" ", "").Replace("'", "").ToLowerInvariant() ?? string.Empty;
+
+            Fastenshtein.Levenshtein nameLevenshtein = new Fastenshtein.Levenshtein(simplifyString(value));
+
+            int minDistance = int.MaxValue;
+            string minDistanceItemName = null;
+            foreach (var potentialValue in potentialValues)
+            {
+                int levenshteinDistance = nameLevenshtein.DistanceFrom(simplifyString(potentialValue));
+
+                if (levenshteinDistance < minDistance)
+                {
+                    minDistance = levenshteinDistance;
+                    minDistanceItemName = potentialValue;
+                }
+
+                if (levenshteinDistance == 0 || levenshteinDistance == 1)
+                {
+                    break;
+                }
+            }
+
+            return (minDistanceItemName, minDistance);
         }
 
         private static string CleanInputImage(string path)

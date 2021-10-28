@@ -35,9 +35,8 @@ namespace NW_Market_OCR
             mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, Cursor.Position.X, Cursor.Position.Y, 0, (IntPtr)0);
         }
 
-        private static Point originalMousePosition;
 
-        public static void MouseEntropy()
+        public static void MouseEntropy(Point originalMousePosition)
         {
             if (originalMousePosition == default)
             {
