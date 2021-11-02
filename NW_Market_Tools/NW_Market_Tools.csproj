@@ -6,16 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Aspose.OCR" Version="21.10.0" />
-    <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
-    <PackageReference Include="IronOcr" Version="2021.9.0" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
     <ProjectReference Include="..\NwdbInfoApi\NwdbInfoApi.csproj" />
   </ItemGroup>
