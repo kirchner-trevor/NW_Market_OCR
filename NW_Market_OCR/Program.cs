@@ -57,10 +57,10 @@ namespace NW_Market_OCR
             database.LoadDatabaseFromDisk();
 
             //MarketDatabase cleanedDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
-            //foreach(MarketListing marketListing in database.Listings)
+            //foreach (MarketListing marketListing in database.Listings)
             //{
             //    MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-            //    if (cleanedMarketListing.Name != null && cleanedMarketListing.Price != 0)
+            //    if (cleanedMarketListing.Name != null && cleanedMarketListing.Price != 0 && cleanedMarketListing.Name != "Silk")
             //    {
             //        cleanedDatabase.Listings.Add(cleanedMarketListing);
             //    }
@@ -364,7 +364,7 @@ namespace NW_Market_OCR
                     minDistanceItemName = potentialValue;
                 }
 
-                if (levenshteinDistance == 0 || levenshteinDistance == 1)
+                if (levenshteinDistance == 0)
                 {
                     break;
                 }
@@ -437,15 +437,6 @@ namespace NW_Market_OCR
                 {
                     Console.WriteLine($"Omitting bad market listing {newMarketListing}");
                 }
-
-                //Console.Write($"Bucket @ Y={wordBucket.Key}\n");
-
-                //foreach (OcrTextArea word in wordBucket.Value)
-                //{
-                //    Console.Write($"\t{word.X}, {word.Y} - {word.Text}\n");
-                //}
-
-                //Console.Write("\n\n");
             }
 
             CorrectMarketListingPricesAscending(marketListings);
@@ -457,12 +448,25 @@ namespace NW_Market_OCR
 
             previousMarketListings = marketListings;
 
+            List<MarketListing> cleanedMarketListing = new List<MarketListing>();
             foreach (MarketListing marketListing in marketListings)
+            {
+                if (marketListing.Price != 0)
+                {
+                    cleanedMarketListing.Add(marketListing);
+                }
+                else
+                {
+                    Console.WriteLine($"Omitting bad market listing {marketListing}");
+                }
+            }
+
+            foreach (MarketListing marketListing in cleanedMarketListing)
             {
                 Console.WriteLine($"{marketListing}");
             }
 
-            database.Listings.AddRange(marketListings);
+            database.Listings.AddRange(cleanedMarketListing);
 
             // TODO: Purge entries older than 1 week
 
