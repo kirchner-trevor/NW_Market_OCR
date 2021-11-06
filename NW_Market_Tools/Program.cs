@@ -9,14 +9,16 @@ namespace NW_Market_Tools
 {
     class Program
     {
-        private static string TARGET_TRADESKILL = "Furnishing";
-        private static int TARGET_TRADESKILL_LEVEL = default;
-        private static string TARGET_ITEM = default; // Check "Powerful Incense" for double nested quantities
+        private static string[] TARGET_TRADESKILLS = new[] { "Weaponsmithing", "Jewelcrafting", "Arcana", "Furnishing", }; // "Armoring", "Engineering", "Cooking",
+        private static int[] TARGET_TRADESKILL_LEVELS = new[] { 1, 50, 100, 150 };
+        private static string TARGET_ITEM = default;
 
-        private static DateTime DATE_FILTER = DateTime.Now.AddDays(-7);
+        private static DateTime DATE_FILTER = DateTime.Now.AddDays(-1);
         private static string LOCATION_FILTER = default;
+        private static float SIMILAR_COST_PERCENTAGE = 0.25f; // How much more expensive an item can be and still get included in the total available amount
+        private static int MIN_AVAILABLE = 10;
 
-        private const bool INCLUDE_MATERIAL_CONVERTER_RECIPES = true;
+        private const bool INCLUDE_MATERIAL_CONVERTER_RECIPES = false;
         private const bool SHOW_ALL_RECIPES = false;
         private const bool LIST_UNOBTAINABLE_ITEMS = true;
 
@@ -38,72 +40,81 @@ namespace NW_Market_Tools
 
             Console.WriteLine("\n== Finding Best Recipes To Craft! ==\n");
 
-            List<RecipeData> recipesToCraft = recipeDetails.Where(_ => (TARGET_ITEM == default || _.Name.Contains(TARGET_ITEM)) && (TARGET_TRADESKILL == default || _.Tradeskill == TARGET_TRADESKILL) && (TARGET_TRADESKILL_LEVEL == default || _.RecipeLevel <= TARGET_TRADESKILL_LEVEL)).ToList();
-
-            if (!SHOW_ALL_RECIPES)
+            List<RecipeDataIngredient> unobtainableIngredients = new List<RecipeDataIngredient>();
+            foreach (string targetTradeskill in TARGET_TRADESKILLS)
             {
-                Console.WriteLine($"Checking {recipesToCraft.Count} recipes against {marketDatabase.Listings.Count} market listings...");
-            }
-
-            RecipeCraftSummary mostCostEfficientRecipe = default;
-            double highestEfficiency = float.MinValue;
-
-            Dictionary<string, RecipeCraftSummary> recipeSummaryCache = new Dictionary<string, RecipeCraftSummary>();
-            foreach (RecipeData recipeToCraft in recipesToCraft)
-            {
-                RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
-
-                if (SHOW_ALL_RECIPES)
+                foreach (int targetTradeskillLevel in TARGET_TRADESKILL_LEVELS)
                 {
-                    WriteBuyCraftTreeToConsole(recipeSummary);
-                    Console.WriteLine($"");
-                }
+                    List<RecipeData> recipesToCraft = recipeDetails.Where(_ => (TARGET_ITEM == default || _.Name.Contains(TARGET_ITEM)) && (targetTradeskill == default || _.Tradeskill == targetTradeskill) && (targetTradeskillLevel == default || _.RecipeLevel <= targetTradeskillLevel)).ToList();
 
-                foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(recipeSummary))
-                {
-                    double efficiency = Math.Ceiling(tradeskillExp.Value / recipeSummary.MinimumCost);
+                    //if (!SHOW_ALL_RECIPES)
+                    //{
+                    //    Console.WriteLine($"Checking {recipesToCraft.Count} recipes against {marketDatabase.Listings.Count} market listings...");
+                    //}
 
-                    if (SHOW_ALL_RECIPES)
+                    RecipeCraftSummary mostCostEfficientRecipe = default;
+                    double highestEfficiency = float.MinValue;
+
+                    Dictionary<string, RecipeCraftSummary> recipeSummaryCache = new Dictionary<string, RecipeCraftSummary>();
+                    foreach (RecipeData recipeToCraft in recipesToCraft)
                     {
+                        RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
+
+                        if (SHOW_ALL_RECIPES)
+                        {
+                            WriteBuyCraftTreeToConsole(recipeSummary);
+                            Console.WriteLine($"");
+                        }
+
+                        foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(recipeSummary))
+                        {
+                            double efficiency = Math.Ceiling(tradeskillExp.Value / recipeSummary.MinimumCost);
+
+                            if (SHOW_ALL_RECIPES)
+                            {
+                                Console.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
+                            }
+
+                            if ((targetTradeskill == default || tradeskillExp.Key == targetTradeskill) && efficiency > highestEfficiency)
+                            {
+                                mostCostEfficientRecipe = recipeSummary;
+                                highestEfficiency = efficiency;
+                            }
+                        }
+
+                        if (SHOW_ALL_RECIPES)
+                        {
+                            Console.WriteLine($"{new string('-', 40)}");
+                        }
+                    }
+
+                    if (LIST_UNOBTAINABLE_ITEMS)
+                    {
+                        foreach (RecipeData recipeToCraft in recipesToCraft)
+                        {
+                            RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
+                            unobtainableIngredients.AddRange(recipeSummary.Unobtainable);
+                        }
+                    }
+
+                    Console.WriteLine($"\n== Best Recipe for {targetTradeskill} @ Lvl {targetTradeskillLevel}! ==\n");
+                    WriteBuyCraftTreeToConsole(mostCostEfficientRecipe);
+                    Console.WriteLine($"");
+                    foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(mostCostEfficientRecipe))
+                    {
+                        double efficiency = Math.Ceiling(tradeskillExp.Value / mostCostEfficientRecipe.MinimumCost);
                         Console.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
                     }
-
-                    if ((TARGET_TRADESKILL == default || tradeskillExp.Key == TARGET_TRADESKILL) && efficiency > highestEfficiency)
-                    {
-                        mostCostEfficientRecipe = recipeSummary;
-                        highestEfficiency = efficiency;
-                    }
-                }
-
-                if (SHOW_ALL_RECIPES)
-                {
-                    Console.WriteLine($"{new string('-', 40)}");
                 }
             }
 
             if (LIST_UNOBTAINABLE_ITEMS)
             {
-                Console.WriteLine($"\n== Unobtainable Items Found During Search! ==\n");
-                List<RecipeDataIngredient> unobtainableIngredients = new List<RecipeDataIngredient>();
-                foreach (RecipeData recipeToCraft in recipesToCraft)
-                {
-                    RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
-                    unobtainableIngredients.AddRange(recipeSummary.Unobtainable);
-                }
-
-                foreach (string ingredient in unobtainableIngredients.Select(_ => _.Name).Distinct())
+                Console.WriteLine($"\n== Unobtainable Items Found During Search! ==");
+                foreach (string ingredient in unobtainableIngredients.OrderBy(_ => _.Type).Select(_ => _.Name).Distinct().OrderBy(_ => _))
                 {
                     Console.WriteLine($"  {ingredient}");
                 }
-            }
-
-            Console.WriteLine($"\n== Best Recipe for {TARGET_TRADESKILL}! ==\n");
-            WriteBuyCraftTreeToConsole(mostCostEfficientRecipe);
-            Console.WriteLine($"");
-            foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(mostCostEfficientRecipe))
-            {
-                double efficiency = Math.Ceiling(tradeskillExp.Value / mostCostEfficientRecipe.MinimumCost);
-                Console.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
             }
         }
 
@@ -119,7 +130,7 @@ namespace NW_Market_Tools
             foreach (RecipeBuyItemAction buy in recipeSummary.Buys)
             {
                 RecipeBuyItemAction itemBuy = itemBuys[buy.Name];
-                Console.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.Listing.Price}ea @ {itemBuy.Location})");
+                Console.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.Listing.Price}ea | {itemBuy.TotalAvailableAtLocation} @ {itemBuy.Location})");
             }
             foreach (RecipeDataIngredient unobtainable in recipeSummary.Unobtainable)
             {
@@ -154,6 +165,7 @@ namespace NW_Market_Tools
                         Name = buy.Name,
                         Quantity = buy.Quantity * recipeSummary.CraftCount,
                         TotalCost = buy.TotalCost * recipeSummary.CraftCount,
+                        TotalAvailableAtLocation = buy.TotalAvailableAtLocation,
                     };
                     itemsToBuy.Add(buy.Listing.Name, buyItemAction);
                 }
@@ -205,7 +217,16 @@ namespace NW_Market_Tools
 
             if (recipeSummaryCache.ContainsKey(recipe.Id))
             {
-                return recipeSummaryCache[recipe.Id];
+                RecipeCraftSummary existingSummary = recipeSummaryCache[recipe.Id];
+                return new RecipeCraftSummary
+                {
+                    Buys = existingSummary.Buys,
+                    CraftCount = 1,
+                    Crafts = existingSummary.Crafts,
+                    MinimumCost = existingSummary.MinimumCost,
+                    Recipe = existingSummary.Recipe,
+                    Unobtainable = existingSummary.Unobtainable,
+                };
             }
 
             RecipeCraftSummary recipeSummary = new RecipeCraftSummary();
@@ -226,16 +247,22 @@ namespace NW_Market_Tools
                 foreach (RecipeDataIngredient recipeDataIngredient in ingredientsToCheck)
                 {
                     MarketListing marketListingToBuy = default;
+                    int marketListingTotalAvailableAtLocation = 0;
                     float minimumCostToBuy = float.MaxValue;
                     MarketItemSummary marketSummary = marketDatabase.GetItemSummary(recipeDataIngredient.Name, LOCATION_FILTER, DATE_FILTER);
                     if (marketSummary.LocationPrices.Count != 0)
                     {
                         foreach (TimePrices timePrices in marketSummary.LocationPrices.SelectMany(_ => _.TimePrices))
                         {
-                            if ((timePrices.Minimum * recipeDataIngredient.Quantity) < minimumCostToBuy)
+                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Available > MIN_AVAILABLE).Select(_ => _.Price);
+                            float minPriceOfQuantity = pricesOfQuantity.Any() ? pricesOfQuantity.Min() : float.MaxValue;
+                            if ((minPriceOfQuantity * recipeDataIngredient.Quantity) < minimumCostToBuy)
                             {
-                                marketListingToBuy = timePrices.Listings.First(_ => _.Price == timePrices.Minimum);
+                                marketListingToBuy = timePrices.Listings.First(_ => _.Price == minPriceOfQuantity);
                                 minimumCostToBuy = timePrices.Minimum * recipeDataIngredient.Quantity;
+                                marketListingTotalAvailableAtLocation = timePrices.Listings
+                                    .Where(_ => (Math.Abs(_.Price - marketListingToBuy.Price) <= marketListingToBuy.Price * SIMILAR_COST_PERCENTAGE) && _.Location == marketListingToBuy.Location)
+                                    .Sum(_ => _.Available);
                             }
                         }
                     }
@@ -279,6 +306,7 @@ namespace NW_Market_Tools
                                 Quantity = recipeDataIngredient.Quantity,
                                 TotalCost = minimumCostToBuy,
                                 Listing = marketListingToBuy,
+                                TotalAvailableAtLocation = marketListingTotalAvailableAtLocation,
                             };
                         }
                         else
@@ -334,6 +362,7 @@ namespace NW_Market_Tools
         public int Quantity;
         public string Location;
         public float TotalCost;
+        public int TotalAvailableAtLocation;
 
         public MarketListing Listing;
     }

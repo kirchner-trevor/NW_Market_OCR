@@ -1,16 +1,17 @@
-﻿using Aspose.OCR;
+﻿using Amazon;
+using Amazon.S3;
 using IronOcr;
 using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 
 namespace NW_Market_OCR
 {
@@ -21,16 +22,26 @@ namespace NW_Market_OCR
         // Set your mouse on the next page button when this is true and it will click through the pages
         private const bool AUTOMATIC_MARKET_BROWSING = false;
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
+        private const int WORD_BUCKET_Y_GROUPING_THRESHOLD = 100;
         private static Point NEXT_PAGE = new Point(1800, 227);
         private static Rectangle CONTENT_AREA = new Rectangle() { X = 690, Y = 340, Width = 1140, Height = 700 };
+        private static Rectangle MARKET_HEADER_CONTENT_AREA = new Rectangle() { X = 1350, Y = 135, Width = 150, Height = 30 };
+        private static Rectangle BASE_IMAGE_SIZE = new Rectangle() { X = 0, Y = 0, Width = 1920, Height = 1080 };
+        private static Range NAME_TEXT_X_RANGE = new Range(1550, 2050);
+        private static Range PRICE_TEXT_X_RANGE = new Range(2350, 2550);
+        private static Range AVAILABLE_TEXT_X_RANGE = new Range(3550, 3650);
+        private static Range OWNED_TEXT_X_RANGE = new Range(3650, 3750);
+        private static Range TIME_REMAINING_TEXT_X_RANGE = new Range(3750, 3900);
+        private static Range LOCATION_TEXT_X_RANGE = new Range(3900, 4300);
+        private static Func<string, Rectangle, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
+
+        private static Rectangle BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
+        private static Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
+        private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
 
         // TODO: Change the app to collect screenshots frequently while in the market, but do the OCR in another thread (treating each screenshot as a queue of work to be completed)
-
-        // TODO: Use the NWDB site to generate information about which recipes are profitable to craft, or provide the most XP per gold. (https://nwdb.info/db/recipe/2hgreataxe_pestilencet5.json)
-
-        // TODO: Allow auto-collect mode to work of a prioritized list that it continues to adjust priority on (searches with no results = lower priority, same prices each search = lower priority)
 
         // TODO: Generate "trade-routes" where it generates a trip plan where you buy/sell items at each stop in an efficient way (e.g. In Windsward Sell Ironhide & Buy Silkweed, Then in Monarch's Bluff Sell Silkweek & Buy Iron Ore, Then in Everfall...)
 
@@ -60,19 +71,30 @@ namespace NW_Market_OCR
             //foreach (MarketListing marketListing in database.Listings)
             //{
             //    MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-            //    if (cleanedMarketListing.Name != null && cleanedMarketListing.Price != 0 && cleanedMarketListing.Name != "Silk")
+            //    if (cleanedMarketListing.Name != null && cleanedMarketListing.Price != 0 && cleanedMarketListing.Available != 0)
             //    {
             //        cleanedDatabase.Listings.Add(cleanedMarketListing);
             //    }
             //}
             //cleanedDatabase.SaveDatabaseToDisk();
+            //database = cleanedDatabase;
 
             while (true)
             {
                 Console.WriteLine("Checking to see if you're at the market...");
                 DateTime startTime = DateTime.UtcNow;
 
-                string path = SaveImageOfPrimaryScreen();
+                string path = SaveImageOfNewWorld();
+                if (path == null)
+                {
+                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                    int timeToWait = Math.Clamp(OUT_OF_MARKET_DELAY - timePassed, 0, OUT_OF_MARKET_DELAY);
+                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
+                    Thread.Sleep(timeToWait);
+                    continue;
+                }
+
+                ImageContainsBlueBanner(path);
 
                 string processedPath = CleanInputImage(path);
 
@@ -124,126 +146,109 @@ namespace NW_Market_OCR
 
         private static bool IsImageShowingMarket(string processedPath)
         {
-            string marketHeaderText = ExtractMarketHeaderTextFromNewWorldMarketImageUsingIron(processedPath);
+            string marketHeaderText = ExtractMarketHeaderTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
             return marketHeaderText.Contains("showing") || marketHeaderText.Contains("orders") || marketHeaderText.Contains("at");
         }
 
-        private static string ExtractMarketHeaderTextFromNewWorldMarketImageUsingIron(string processedPath)
+        private static string ExtractMarketHeaderTextFromNewWorldMarketImage(string processedPath, Func<string, Rectangle, List<OcrTextArea>> runOcr)
         {
-            IronTesseract Ocr = new();
-            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
-            Ocr.Configuration.BlackListCharacters = "`";
-            using (var Input = new OcrInput())
-            {
-                var ContentArea = new Rectangle() { X = 1350, Y = 135, Width = 150, Height = 30 };
-                Input.AddImage(processedPath, ContentArea);
+            List<OcrTextArea> words = runOcr(processedPath, MARKET_HEADER_CONTENT_AREA);
+            string text = words.Aggregate("", (a, b) => a + b.Text);
 
-                OcrResult Result = Ocr.Read(Input);
+            Console.WriteLine($"Found market header text '{text}'.");
 
-                Console.WriteLine($"Found market header text '{Result.Text}'.");
-
-                return Result.Text.ToLowerInvariant();
-            }
+            return text.ToLowerInvariant();
         }
 
-        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImageUsingIron(string processedPath)
+        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImage(string processedPath, Func<string, Rectangle, List<OcrTextArea>> runOcr)
         {
+            List<OcrTextArea> words = runOcr(processedPath, CONTENT_AREA);
             Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
 
-            IronTesseract Ocr = new();
-            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
-            Ocr.Configuration.BlackListCharacters = "`";
-            using (var Input = new OcrInput())
+            foreach (OcrTextArea word in words)
             {
-                Input.AddImage(processedPath, CONTENT_AREA);
-
-                OcrResult Result = Ocr.Read(Input);
-
-                foreach (var page in Result.Pages)
-                {
-                    foreach (var line in page.Lines)
-                    {
-                        foreach (var word in line.Words)
-                        {
-                            // Find the group within 100 of the words Y value
-                            int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < 100);
-                            if (wordBucketsByHeight.ContainsKey(yGroupKey))
-                            {
-                                wordBucketsByHeight[yGroupKey].Add(new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y });
-                            }
-                            else
-                            {
-                                wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y } });
-                            }
-                        }
-                    }
-                }
-            }
-
-            return wordBucketsByHeight;
-        }
-
-        private static Dictionary<int, List<OcrTextArea>> ExtractTextFromNewWorldMarketImageUsingAspose(string processedPath)
-        {
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
-
-            AsposeOcr Ocr = new();
-
-            RecognitionResult result = Ocr.RecognizeImage(processedPath, new RecognitionSettings
-            {
-                IgnoredCharacters = "`",
-                RecognitionAreas = new List<Rectangle>
-                {
-                    new Rectangle() { X = 690, Y = 340, Width = 1140, Height = 660 },
-                }
-            });
-
-
-            for (int i = 0; i < result.RecognitionLinesResult.Count; i++)
-            {
-                Rectangle wordRectangle = result.RecognitionLinesResult[i].Line;
-                string wordText = result.RecognitionLinesResult[i].TextInLine;
-
                 // Find the group within 100 of the words Y value
-                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - wordRectangle.Y) < 100);
+                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < WORD_BUCKET_Y_GROUPING_THRESHOLD);
                 if (wordBucketsByHeight.ContainsKey(yGroupKey))
                 {
-                    wordBucketsByHeight[yGroupKey].Add(new OcrTextArea { Text = wordText, X = wordRectangle.X, Y = wordRectangle.Y }); ;
+                    wordBucketsByHeight[yGroupKey].Add(word);
                 }
                 else
                 {
-                    wordBucketsByHeight.Add(wordRectangle.Y, new List<OcrTextArea> { new OcrTextArea { Text = wordText, X = wordRectangle.X, Y = wordRectangle.Y } });
+                    wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { word });
                 }
             }
 
             return wordBucketsByHeight;
         }
 
-        private static string SaveImageOfPrimaryScreen()
+        private static List<OcrTextArea> RunIronOcr(string processedPath, Rectangle contentArea)
         {
-            //Create a new bitmap.
-            using (var bmpScreenshot = new Bitmap(Screen.PrimaryScreen.Bounds.Width,
-                                           Screen.PrimaryScreen.Bounds.Height,
-                                           PixelFormat.Format32bppArgb))
-            {
-                // Create a graphics object from the bitmap.
-                using (var gfxScreenshot = Graphics.FromImage(bmpScreenshot))
-                {
-                    // Take the screenshot from the upper left corner to the right bottom corner.
-                    gfxScreenshot.CopyFromScreen(Screen.PrimaryScreen.Bounds.X,
-                                                Screen.PrimaryScreen.Bounds.Y,
-                                                0,
-                                                0,
-                                                Screen.PrimaryScreen.Bounds.Size,
-                                                CopyPixelOperation.SourceCopy);
+            List<OcrTextArea> textAreas = new();
 
-                    // Save the screenshot to the specified path that the user has chosen.
-                    bmpScreenshot.Save("Screenshot.png", ImageFormat.Png);
+            IronTesseract Ocr = new();
+            Ocr.Configuration.ReadBarCodes = false;
+            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractAndLstm;
+            Ocr.Configuration.BlackListCharacters = "`";
+            using (var Input = new OcrInput())
+            {
+                Input.AddImage(processedPath, contentArea);
+
+                OcrResult Result = Ocr.Read(Input);
+
+                foreach (OcrResult.Word word in Result.Words)
+                {
+                    textAreas.Add(new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y });
                 }
             }
 
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "Screenshot.png");
-            return path;
+            return textAreas;
+        }
+
+        private static IntPtr GetHandleOfNewWorldWindow()
+        {
+            Process process = Process
+                .GetProcesses()
+                .SingleOrDefault(x => x.MainWindowTitle.Contains("New World"));
+
+            return process != null ? process.MainWindowHandle : IntPtr.Zero;
+        }
+
+        private static string SaveImageOfNewWorld()
+        {
+            IntPtr newWorldWindow = GetHandleOfNewWorldWindow();
+            if (newWorldWindow != IntPtr.Zero)
+            {
+                using (Bitmap bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
+                {
+                    bmpScreenshot.Save("Screenshot.png", ImageFormat.Png);
+                }
+
+                string path = Path.Combine(Directory.GetCurrentDirectory(), "Screenshot.png");
+                return path;
+            }
+            else
+            {
+                Console.WriteLine("Cannot find window 'New World'...");
+                return null;
+            }
+        }
+
+        private class Range
+        {
+            public Range(int start, int end)
+            {
+                Start = start;
+                End = end;
+            }
+
+            public int Start;
+            public int End;
+
+            public bool Contains(int value)
+            {
+                return Start < value && value < End;
+            }
         }
 
         private static MarketListing CreateMarketListing(List<OcrTextArea> looseWordLine)
@@ -252,34 +257,39 @@ namespace NW_Market_OCR
 
             foreach (OcrTextArea word in looseWordLine)
             {
-                if (word.X > 1550 && word.X < 2050)
+                if (NAME_TEXT_X_RANGE.Contains(word.X))
                 {
                     // Sometimes the name gets split into pieces
-                    marketListing.Name = marketListing.Name == null ? word.Text : marketListing.Name + " " + word.Text;
+                    marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
+                    marketListing.Name = marketListing.OriginalName;
                 }
-                else if (word.X > 2350 && word.X < 2550)
+                else if (PRICE_TEXT_X_RANGE.Contains(word.X))
                 {
+                    marketListing.OriginalPrice = word.Text;
                     if (float.TryParse(word.Text, out float price))
                     {
                         marketListing.Price = price;
                     }
                 }
-                else if (word.X > 3450 && word.X < 3650)
+                else if (AVAILABLE_TEXT_X_RANGE.Contains(word.X))
                 {
+                    marketListing.OriginalAvailable = word.Text;
                     if (int.TryParse(word.Text, out int available))
                     {
                         marketListing.Available = available;
                     }
                 }
-                else if (word.X > 3650 && word.X < 3750)
+                else if (OWNED_TEXT_X_RANGE.Contains(word.X))
                 {
+                    marketListing.OriginalOwned = word.Text;
                     if (int.TryParse(word.Text, out int owned))
                     {
                         marketListing.Owned = owned;
                     }
                 }
-                else if (word.X > 3750 && word.X < 3900)
+                else if (TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
                 {
+                    marketListing.OriginalTimeRemaining = word.Text;
                     string cleanedWord = word.Text.Replace(" ", "");
                     if (cleanedWord.EndsWith("h"))
                     {
@@ -298,10 +308,10 @@ namespace NW_Market_OCR
                         }
                     }
                 }
-                else if (word.X > 3900 && word.X < 4300)
+                else if (LOCATION_TEXT_X_RANGE.Contains(word.X))
                 {
-                    // Sometimes the name gets split into pieces
-                    marketListing.Location = marketListing.Location == null ? word.Text : marketListing.Location + word.Text;
+                    marketListing.OriginalLocation = marketListing.OriginalLocation == null ? word.Text : marketListing.OriginalLocation + word.Text;
+                    marketListing.Location = marketListing.OriginalLocation;
                 }
             }
 
@@ -323,6 +333,12 @@ namespace NW_Market_OCR
                 Console.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
             }
             marketListing.Location = newLocation;
+
+            if (marketListing.Available == 0)
+            {
+                Console.WriteLine($"Updating available from 0 to 1...");
+                marketListing.Available = 1;
+            }
 
             return marketListing;
         }
@@ -418,11 +434,37 @@ namespace NW_Market_OCR
             return processedPath;
         }
 
+        public static bool ImageContainsBlueBanner(string path)
+        {
+            Console.WriteLine($"Checking image for blue banner at '{path}'...");
+
+            using (Bitmap myBitmap = new Bitmap(path))
+            {
+                double totalDifference = 0f;
+                for (int x = 0; x < BLUE_BANNER_SAMPLE_AREA.Width; x++)
+                {
+                    for (int y = 0; y < BLUE_BANNER_SAMPLE_AREA.Height; y++)
+                    {
+                        Color color = myBitmap.GetPixel(BLUE_BANNER_SAMPLE_AREA.X + x, BLUE_BANNER_SAMPLE_AREA.Y + y);
+                        totalDifference += Math.Sqrt(Math.Pow(color.R - BLUE_BANNER_COLOR.R, 2) + Math.Pow(color.G - BLUE_BANNER_COLOR.G, 2) + Math.Pow(color.B - BLUE_BANNER_COLOR.B, 2));
+                    }
+                }
+
+                double averageDifference = totalDifference / (BLUE_BANNER_SAMPLE_AREA.Width * BLUE_BANNER_SAMPLE_AREA.Height);
+
+                if (averageDifference < BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();
 
         private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath)
         {
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImageUsingIron(processedPath);
+            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
 
             List<MarketListing> marketListings = new List<MarketListing>();
             foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight.OrderBy(_ => _.Key))
