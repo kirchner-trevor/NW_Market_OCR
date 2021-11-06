@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace NW_Market_Tools
 {
-    class Program
+    class MarketTools
     {
         private static string[] TARGET_TRADESKILLS = new[] { "Weaponsmithing", "Jewelcrafting", "Arcana", "Furnishing", }; // "Armoring", "Engineering", "Cooking",
         private static int[] TARGET_TRADESKILL_LEVELS = new[] { 1, 50, 100, 150 };

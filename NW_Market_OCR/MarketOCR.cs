@@ -1,10 +1,13 @@
 ﻿using Amazon;
 using Amazon.S3;
+using Amazon.S3.Model;
 using IronOcr;
+using Microsoft.Extensions.Configuration;
 using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -15,10 +18,9 @@ using System.Threading.Tasks;
 
 namespace NW_Market_OCR
 {
-    class Program
+    class MarketOCR
     {
-        private const int IN_MARKET_DELAY = 6_000;
-        private const int OUT_OF_MARKET_DELAY = 15_000;
+
         // Set your mouse on the next page button when this is true and it will click through the pages
         private const bool AUTOMATIC_MARKET_BROWSING = false;
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
@@ -34,10 +36,6 @@ namespace NW_Market_OCR
         private static Range TIME_REMAINING_TEXT_X_RANGE = new Range(3750, 3900);
         private static Range LOCATION_TEXT_X_RANGE = new Range(3900, 4300);
         private static Func<string, Rectangle, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
-
-        private static Rectangle BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
-        private static Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
-        private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
 
@@ -56,7 +54,16 @@ namespace NW_Market_OCR
         [STAThread]
         static async Task Main(string[] args)
         {
-            bool isBottomOfMarketPage = true;
+            var config = new ConfigurationBuilder()
+                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
+                .AddUserSecrets<MarketOCR>()
+                .Build();
+
+            S3Settings s3Config = new S3Settings
+            {
+                AccessKeyId = config["S3:AccessKeyId"],
+                SecretAccessKey = config["S3:SecretAccessKey"],
+            };
 
             Console.WriteLine($"Loading item database...");
             itemsDatabase = await new NwdbInfoApiClient(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data").ListItemsAsync();
@@ -79,85 +86,52 @@ namespace NW_Market_OCR
             //cleanedDatabase.SaveDatabaseToDisk();
             //database = cleanedDatabase;
 
+            AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
             while (true)
             {
-                Console.WriteLine("Checking to see if you're at the market...");
-                DateTime startTime = DateTime.UtcNow;
-
-                string path = SaveImageOfNewWorld();
-                if (path == null)
+                Console.WriteLine($"Searching s3 for images...");
+                ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
                 {
-                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
-                    int timeToWait = Math.Clamp(OUT_OF_MARKET_DELAY - timePassed, 0, OUT_OF_MARKET_DELAY);
-                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
-                    Thread.Sleep(timeToWait);
-                    continue;
-                }
+                    BucketName = "nwmarketimages",
+                });
 
-                ImageContainsBlueBanner(path);
-
-                string processedPath = CleanInputImage(path);
-
-                if (IsImageShowingMarket(processedPath))
+                if (marketImages.S3Objects.Any())
                 {
-                    Console.Write("Found market interface, processing market listings... ");
-
-                    UpdateDatabaseWithMarketListings(database, processedPath);
-
-                    if (AUTOMATIC_MARKET_BROWSING)
+                    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
                     {
-                        // TODO : Choose a single settlement to browse (as you can only load 500 listings at once)
-
-                        // TODO : Extract and save number of listings at each settlement
-
-                        if (isBottomOfMarketPage)
+                        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
                         {
-                            // TODO : Move mouse to next page button
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
 
-                            AutoInput.Click();
-                            AutoInput.MouseEntropy(NEXT_PAGE);
-                            //isBottomOfMarketPage = false;
-                        }
-                        else
+                        string path = Path.Combine(Directory.GetCurrentDirectory(), "Screenshot.png");
+                        await mwMarketImage.WriteResponseStreamToFileAsync(path, false, new CancellationToken());
+
+                        string processedPath = CleanInputImage(path);
+
+                        UpdateDatabaseWithMarketListings(database, processedPath);
+
+                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
                         {
-                            // TODO : Move mouse to scroll view
-
-                            //AutoInput.ScrollDown(13);
-                            //isBottomOfMarketPage = true;
-                        }
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
                     }
-
-                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
-                    int timeToWait = Math.Clamp(IN_MARKET_DELAY - timePassed, 0, IN_MARKET_DELAY);
-                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
-                    Thread.Sleep(timeToWait);
                 }
                 else
                 {
-                    Console.Write("No market interface... ");
-
-                    int timePassed = (int)(DateTime.UtcNow - startTime).TotalMilliseconds;
-                    int timeToWait = Math.Clamp(OUT_OF_MARKET_DELAY - timePassed, 0, OUT_OF_MARKET_DELAY);
-                    Console.WriteLine($"\tWaiting for {timeToWait}ms...");
-                    Thread.Sleep(timeToWait);
+                    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
+                    Thread.Sleep(TimeSpan.FromSeconds(30));
                 }
             }
         }
 
-        private static bool IsImageShowingMarket(string processedPath)
+        private class S3Settings
         {
-            string marketHeaderText = ExtractMarketHeaderTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
-            return marketHeaderText.Contains("showing") || marketHeaderText.Contains("orders") || marketHeaderText.Contains("at");
-        }
-
-        private static string ExtractMarketHeaderTextFromNewWorldMarketImage(string processedPath, Func<string, Rectangle, List<OcrTextArea>> runOcr)
-        {
-            List<OcrTextArea> words = runOcr(processedPath, MARKET_HEADER_CONTENT_AREA);
-            string text = words.Aggregate("", (a, b) => a + b.Text);
-
-            Console.WriteLine($"Found market header text '{text}'.");
-
-            return text.ToLowerInvariant();
+            public string AccessKeyId { get; set; }
+            public string SecretAccessKey { get; set; }
         }
 
         private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImage(string processedPath, Func<string, Rectangle, List<OcrTextArea>> runOcr)
@@ -203,35 +177,6 @@ namespace NW_Market_OCR
             }
 
             return textAreas;
-        }
-
-        private static IntPtr GetHandleOfNewWorldWindow()
-        {
-            Process process = Process
-                .GetProcesses()
-                .SingleOrDefault(x => x.MainWindowTitle.Contains("New World"));
-
-            return process != null ? process.MainWindowHandle : IntPtr.Zero;
-        }
-
-        private static string SaveImageOfNewWorld()
-        {
-            IntPtr newWorldWindow = GetHandleOfNewWorldWindow();
-            if (newWorldWindow != IntPtr.Zero)
-            {
-                using (Bitmap bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
-                {
-                    bmpScreenshot.Save("Screenshot.png", ImageFormat.Png);
-                }
-
-                string path = Path.Combine(Directory.GetCurrentDirectory(), "Screenshot.png");
-                return path;
-            }
-            else
-            {
-                Console.WriteLine("Cannot find window 'New World'...");
-                return null;
-            }
         }
 
         private class Range
@@ -432,32 +377,6 @@ namespace NW_Market_OCR
 
             Console.WriteLine($"Cleaned image saved to '{processedPath}'");
             return processedPath;
-        }
-
-        public static bool ImageContainsBlueBanner(string path)
-        {
-            Console.WriteLine($"Checking image for blue banner at '{path}'...");
-
-            using (Bitmap myBitmap = new Bitmap(path))
-            {
-                double totalDifference = 0f;
-                for (int x = 0; x < BLUE_BANNER_SAMPLE_AREA.Width; x++)
-                {
-                    for (int y = 0; y < BLUE_BANNER_SAMPLE_AREA.Height; y++)
-                    {
-                        Color color = myBitmap.GetPixel(BLUE_BANNER_SAMPLE_AREA.X + x, BLUE_BANNER_SAMPLE_AREA.Y + y);
-                        totalDifference += Math.Sqrt(Math.Pow(color.R - BLUE_BANNER_COLOR.R, 2) + Math.Pow(color.G - BLUE_BANNER_COLOR.G, 2) + Math.Pow(color.B - BLUE_BANNER_COLOR.B, 2));
-                    }
-                }
-
-                double averageDifference = totalDifference / (BLUE_BANNER_SAMPLE_AREA.Width * BLUE_BANNER_SAMPLE_AREA.Height);
-
-                if (averageDifference < BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT)
-                {
-                    return true;
-                }
-            }
-            return false;
         }
 
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();

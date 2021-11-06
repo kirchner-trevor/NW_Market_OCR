@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace NW_Market_OCR
+namespace NW_Market_Collector
 {
     class WindowPrinterV2
     {

@@ -5,11 +5,13 @@ VisualStudioVersion = 16.0.31702.278
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_OCR", "NW_Market_OCR\NW_Market_OCR.csproj", "{7A93D855-CCF3-4E34-B8D1-065286BBFA52}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Market_Tools", "NW_Market_Tools\NW_Market_Tools.csproj", "{BCC0A28B-1B50-46AA-883D-D7239C0AD0B6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Tools", "NW_Market_Tools\NW_Market_Tools.csproj", "{BCC0A28B-1B50-46AA-883D-D7239C0AD0B6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MW_Market_Model", "MW_Market_Model\MW_Market_Model.csproj", "{DD9B21F5-328D-4A25-90B1-E9DC81B6FD54}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MW_Market_Model", "MW_Market_Model\MW_Market_Model.csproj", "{DD9B21F5-328D-4A25-90B1-E9DC81B6FD54}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NwdbInfoApi", "NwdbInfoApi\NwdbInfoApi.csproj", "{69927286-9B68-4F66-9204-658F38C56A38}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NwdbInfoApi", "NwdbInfoApi\NwdbInfoApi.csproj", "{69927286-9B68-4F66-9204-658F38C56A38}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Market_Collector", "NW_Market_Collector\NW_Market_Collector.csproj", "{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{69927286-9B68-4F66-9204-658F38C56A38}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{69927286-9B68-4F66-9204-658F38C56A38}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{69927286-9B68-4F66-9204-658F38C56A38}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
