@@ -29,13 +29,7 @@ namespace NW_Market_OCR
         private static Rectangle CONTENT_AREA = new Rectangle() { X = 690, Y = 340, Width = 1140, Height = 700 };
         private static Rectangle MARKET_HEADER_CONTENT_AREA = new Rectangle() { X = 1350, Y = 135, Width = 150, Height = 30 };
         private static Rectangle BASE_IMAGE_SIZE = new Rectangle() { X = 0, Y = 0, Width = 1920, Height = 1080 };
-        private static Range NAME_TEXT_X_RANGE = new Range(1550, 2050);
-        private static Range PRICE_TEXT_X_RANGE = new Range(2350, 2550);
-        private static Range AVAILABLE_TEXT_X_RANGE = new Range(3550, 3650);
-        private static Range OWNED_TEXT_X_RANGE = new Range(3650, 3750);
-        private static Range TIME_REMAINING_TEXT_X_RANGE = new Range(3750, 3900);
-        private static Range LOCATION_TEXT_X_RANGE = new Range(3900, 4300);
-        private static Func<string, Rectangle, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
+        private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
 
@@ -95,36 +89,34 @@ namespace NW_Market_OCR
                     BucketName = "nwmarketimages",
                 });
 
-                if (marketImages.S3Objects.Any())
-                {
-                    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
-                    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
-                    {
-                        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
-                        {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
+                //if (marketImages.S3Objects.Any())
+                //{
+                //    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                //    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
+                //    {
+                //        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                //        {
+                //            BucketName = nwMarketImageObject.BucketName,
+                //            Key = nwMarketImageObject.Key,
+                //        });
 
-                        string path = Path.Combine(Directory.GetCurrentDirectory(), "Screenshot.png");
-                        await mwMarketImage.WriteResponseStreamToFileAsync(path, false, new CancellationToken());
-
-                        string processedPath = CleanInputImage(path);
+                        string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                        //await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
 
                         UpdateDatabaseWithMarketListings(database, processedPath);
 
-                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                        {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
-                    Thread.Sleep(TimeSpan.FromSeconds(30));
-                }
+                //        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                //        {
+                //            BucketName = nwMarketImageObject.BucketName,
+                //            Key = nwMarketImageObject.Key,
+                //        });
+                //    }
+                //}
+                //else
+                //{
+                //    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
+                //    Thread.Sleep(TimeSpan.FromSeconds(30));
+                //}
             }
         }
 
@@ -134,9 +126,9 @@ namespace NW_Market_OCR
             public string SecretAccessKey { get; set; }
         }
 
-        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImage(string processedPath, Func<string, Rectangle, List<OcrTextArea>> runOcr)
+        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImage(string processedPath, Func<string, List<OcrTextArea>> runOcr)
         {
-            List<OcrTextArea> words = runOcr(processedPath, CONTENT_AREA);
+            List<OcrTextArea> words = runOcr(processedPath);
             Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
 
             foreach (OcrTextArea word in words)
@@ -156,17 +148,17 @@ namespace NW_Market_OCR
             return wordBucketsByHeight;
         }
 
-        private static List<OcrTextArea> RunIronOcr(string processedPath, Rectangle contentArea)
+        private static List<OcrTextArea> RunIronOcr(string processedPath)
         {
             List<OcrTextArea> textAreas = new();
 
             IronTesseract Ocr = new();
             Ocr.Configuration.ReadBarCodes = false;
             Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractAndLstm;
-            Ocr.Configuration.BlackListCharacters = "`";
+            Ocr.Configuration.BlackListCharacters = "`~";
             using (var Input = new OcrInput())
             {
-                Input.AddImage(processedPath, contentArea);
+                Input.AddImage(processedPath);
 
                 OcrResult Result = Ocr.Read(Input);
 
@@ -192,7 +184,12 @@ namespace NW_Market_OCR
 
             public bool Contains(int value)
             {
-                return Start < value && value < End;
+                return Start <= value && value < End;
+            }
+
+            public static Range operator *(Range range, float scale)
+            {
+                return new Range((int)Math.Round(range.Start * scale), (int)Math.Round(range.End * scale));
             }
         }
 
@@ -202,13 +199,13 @@ namespace NW_Market_OCR
 
             foreach (OcrTextArea word in looseWordLine)
             {
-                if (NAME_TEXT_X_RANGE.Contains(word.X))
+                if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
                 {
                     // Sometimes the name gets split into pieces
                     marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
                     marketListing.Name = marketListing.OriginalName;
                 }
-                else if (PRICE_TEXT_X_RANGE.Contains(word.X))
+                else if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalPrice = word.Text;
                     if (float.TryParse(word.Text, out float price))
@@ -216,7 +213,7 @@ namespace NW_Market_OCR
                         marketListing.Price = price;
                     }
                 }
-                else if (AVAILABLE_TEXT_X_RANGE.Contains(word.X))
+                else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalAvailable = word.Text;
                     if (int.TryParse(word.Text, out int available))
@@ -224,7 +221,7 @@ namespace NW_Market_OCR
                         marketListing.Available = available;
                     }
                 }
-                else if (OWNED_TEXT_X_RANGE.Contains(word.X))
+                else if (ColumnMappings.OWNED_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalOwned = word.Text;
                     if (int.TryParse(word.Text, out int owned))
@@ -232,7 +229,7 @@ namespace NW_Market_OCR
                         marketListing.Owned = owned;
                     }
                 }
-                else if (TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
+                else if (ColumnMappings.TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalTimeRemaining = word.Text;
                     string cleanedWord = word.Text.Replace(" ", "");
@@ -253,7 +250,7 @@ namespace NW_Market_OCR
                         }
                     }
                 }
-                else if (LOCATION_TEXT_X_RANGE.Contains(word.X))
+                else if (ColumnMappings.LOCATION_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalLocation = marketListing.OriginalLocation == null ? word.Text : marketListing.OriginalLocation + word.Text;
                     marketListing.Location = marketListing.OriginalLocation;
@@ -306,7 +303,7 @@ namespace NW_Market_OCR
         {
             if (value == null || value.Length <= 3)
             {
-                return (value, -1);
+                return (null, -1);
             }
 
             string simplifyString(string complexString) => complexString?.Replace(" ", "").Replace("'", "").ToLowerInvariant() ?? string.Empty;
@@ -381,9 +378,53 @@ namespace NW_Market_OCR
 
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();
 
+        private static MarketColumnMappings ColumnMappings = new MarketColumnMappings();
+
+        private class MarketColumnMappings
+        {
+            private Point DEFAULT_SIZE = new Point(1130, 730);
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(8, 785);
+            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(786, 1716);
+            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(1927, 2074);
+            private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(2075, 2236);
+            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(2237, 2385);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(2386, 4300);
+
+            public Range NAME_TEXT_X_RANGE { get; private set; }
+            public Range PRICE_TEXT_X_RANGE { get; private set; }
+            public Range AVAILABLE_TEXT_X_RANGE { get; private set; }
+            public Range OWNED_TEXT_X_RANGE { get; private set; }
+            public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
+            public Range LOCATION_TEXT_X_RANGE { get; private set; }
+
+            public MarketColumnMappings()
+            {
+                SetSize(DEFAULT_SIZE);
+            }
+
+            public void SetSize(Point size)
+            {
+                float xRatio = size.X / DEFAULT_SIZE.X;
+
+                NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
+                PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
+                AVAILABLE_TEXT_X_RANGE = DEFAULT_AVAILABLE_TEXT_X_RANGE * xRatio;
+                OWNED_TEXT_X_RANGE = DEFAULT_OWNED_TEXT_X_RANGE * xRatio;
+                TIME_REMAINING_TEXT_X_RANGE = DEFAULT_TIME_REMAINING_TEXT_X_RANGE * xRatio;
+                LOCATION_TEXT_X_RANGE = DEFAULT_LOCATION_TEXT_X_RANGE * xRatio;
+            }
+        }
+
         private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath)
         {
             Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
+
+            using (Image image = Image.FromFile(processedPath))
+            {
+                ColumnMappings.SetSize(new Point(image.Width, image.Height));
+            }
+
+            // TODO: Add batch id and listing id to objects
 
             List<MarketListing> marketListings = new List<MarketListing>();
             foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight.OrderBy(_ => _.Key))
@@ -430,6 +471,8 @@ namespace NW_Market_OCR
             database.Listings.AddRange(cleanedMarketListing);
 
             // TODO: Purge entries older than 1 week
+
+            // TODO: Remove likely duplicates
 
             database.SaveDatabaseToDisk();
 
@@ -478,13 +521,13 @@ namespace NW_Market_OCR
 
                     // Santity check
                     // TODO : Improve sanity check to fix more scenarios
-                    if (!IsCurrentInOrder(i, marketListings) && (IsPreviousTwoAscending(i, marketListings) && IsNextTwoAscending(i, marketListings)))
-                    {
-                        float previousNextMidpoint = ((next.Value - previous.Value) / 2f) + previous.Value;
-                        Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previousNextMidpoint}");
-                        marketListings[i].Price = previousNextMidpoint;
-                        updatedPrice = true;
-                    }
+                    //if (!IsCurrentInOrder(i, marketListings) && (IsPreviousTwoAscending(i, marketListings) && IsNextTwoAscending(i, marketListings)))
+                    //{
+                    //    float previousNextMidpoint = ((next.Value - previous.Value) / 2f) + previous.Value;
+                    //    Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previousNextMidpoint}");
+                    //    marketListings[i].Price = previousNextMidpoint;
+                    //    updatedPrice = true;
+                    //}
                 }
             } while (updatedPrice);
         }

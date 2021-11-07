@@ -11,6 +11,15 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.4" />
+    <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
+    <PackageReference Include="Tesseract" Version="4.1.1" />
+    <PackageReference Include="Tesseract.Drawing" Version="4.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="tessdata\eng.traineddata">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
