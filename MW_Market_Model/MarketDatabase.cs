@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace MW_Market_Model
 {
@@ -11,6 +10,10 @@ namespace MW_Market_Model
     public class MarketDatabase
     {
         private const string DATABASE_FILE_NAME = "database.json";
+        private static readonly JsonSerializerOptions JSON_SERIALIZER_OPTIONS = new JsonSerializerOptions
+        {
+            Converters = { new TimeSpanJsonConverter(), }
+        };
 
         private string DataDirectory;
 
@@ -27,7 +30,7 @@ namespace MW_Market_Model
         {
             List<IGrouping<string, MarketListing>> listingsForItem = Listings.Where(_ => _.Name == name)
                 .Where(_ => location == default || _.Location == location)
-                .Where(_ => onOrAfter == default || _.Time >= onOrAfter)
+                .Where(_ => onOrAfter == default || _.Latest.Time >= onOrAfter)
                 .GroupBy(_ => _.Location).ToList();
 
             MarketItemSummary summary = new MarketItemSummary();
@@ -35,7 +38,7 @@ namespace MW_Market_Model
 
             foreach (IGrouping<string, MarketListing> locationListings in listingsForItem)
             {
-                List<IGrouping<DateTime, MarketListing>> timeListings = locationListings.GroupBy(_ => _.Time.Date).ToList();
+                List<IGrouping<DateTime, MarketListing>> timeListings = locationListings.GroupBy(_ => _.Latest.Time.Date).ToList();
 
                 LocationPrices locationPrices = new LocationPrices();
                 locationPrices.Location = locationListings.Key;
@@ -47,10 +50,10 @@ namespace MW_Market_Model
                         Average = timeListing.Average(_ => _.Price),
                         Maximum = timeListing.Max(_ => _.Price),
                         Minimum = timeListing.Min(_ => _.Price),
-                        EndTime = timeListing.Max(_ => _.Time),
-                        StartTime = timeListing.Min(_ => _.Time),
-                        TotalQuantity = timeListing.Sum(_ => _.Available),
-                        TotalMarket = timeListing.Sum(_ => _.Available * _.Price),
+                        EndTime = timeListing.Max(_ => _.Latest.Time),
+                        StartTime = timeListing.Min(_ => _.Latest.Time),
+                        TotalQuantity = timeListing.Sum(_ => _.Latest.Available),
+                        TotalMarket = timeListing.Sum(_ => _.Latest.Available * _.Price),
                         Listings = timeListing.ToList(),
                     };
 
@@ -66,21 +69,24 @@ namespace MW_Market_Model
         public void SaveDatabaseToDisk()
         {
             Console.WriteLine("Saving database to disk...");
-            string json = JsonSerializer.Serialize(this);
-            string databasePath = Path.Combine(DataDirectory, DATABASE_FILE_NAME);
-            File.WriteAllText(databasePath, json);
+            string json = JsonSerializer.Serialize(this, JSON_SERIALIZER_OPTIONS);
+            File.WriteAllText(GetDataBasePathOnDisk(), json);
         }
 
         public void LoadDatabaseFromDisk()
         {
             Console.WriteLine("Loading database from disk...");
-            string databasePath = Path.Combine(DataDirectory, DATABASE_FILE_NAME);
-            if (File.Exists(databasePath))
+            if (File.Exists(GetDataBasePathOnDisk()))
             {
-                string json = File.ReadAllText(databasePath);
-                MarketDatabase loadedDatabase = JsonSerializer.Deserialize<MarketDatabase>(json);
-                this.Listings = loadedDatabase.Listings;
+                string json = File.ReadAllText(GetDataBasePathOnDisk());
+                MarketDatabase loadedDatabase = JsonSerializer.Deserialize<MarketDatabase>(json, JSON_SERIALIZER_OPTIONS);
+                Listings = loadedDatabase.Listings;
             }
+        }
+
+        public string GetDataBasePathOnDisk()
+        {
+            return Path.Combine(DataDirectory, DATABASE_FILE_NAME); ;
         }
     }
 

@@ -7,10 +7,7 @@ using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
-using System.Configuration;
-using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -20,15 +17,8 @@ namespace NW_Market_OCR
 {
     class MarketOCR
     {
-
-        // Set your mouse on the next page button when this is true and it will click through the pages
-        private const bool AUTOMATIC_MARKET_BROWSING = false;
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int WORD_BUCKET_Y_GROUPING_THRESHOLD = 100;
-        private static Point NEXT_PAGE = new Point(1800, 227);
-        private static Rectangle CONTENT_AREA = new Rectangle() { X = 690, Y = 340, Width = 1140, Height = 700 };
-        private static Rectangle MARKET_HEADER_CONTENT_AREA = new Rectangle() { X = 1350, Y = 135, Width = 150, Height = 30 };
-        private static Rectangle BASE_IMAGE_SIZE = new Rectangle() { X = 0, Y = 0, Width = 1920, Height = 1080 };
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
@@ -65,6 +55,7 @@ namespace NW_Market_OCR
 
             Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
+            // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
             database.LoadDatabaseFromDisk();
 
@@ -81,6 +72,7 @@ namespace NW_Market_OCR
             //database = cleanedDatabase;
 
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
+
             while (true)
             {
                 Console.WriteLine($"Searching s3 for images...");
@@ -89,34 +81,64 @@ namespace NW_Market_OCR
                     BucketName = "nwmarketimages",
                 });
 
-                //if (marketImages.S3Objects.Any())
-                //{
-                //    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
-                //    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
-                //    {
-                //        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
-                //        {
-                //            BucketName = nwMarketImageObject.BucketName,
-                //            Key = nwMarketImageObject.Key,
-                //        });
+                if (marketImages.S3Objects.Any())
+                {
+                    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
+                    {
+                        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                        {
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
 
                         string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                        //await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                        await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                        DateTime captureTime = mwMarketImage.Metadata.Keys.Contains("timestamp") ? DateTime.Parse(mwMarketImage.Metadata["timestamp"]) : DateTime.UtcNow;
 
-                        UpdateDatabaseWithMarketListings(database, processedPath);
+                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
-                //        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                //        {
-                //            BucketName = nwMarketImageObject.BucketName,
-                //            Key = nwMarketImageObject.Key,
-                //        });
-                //    }
-                //}
-                //else
-                //{
-                //    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
-                //    Thread.Sleep(TimeSpan.FromSeconds(30));
-                //}
+                        await TryUploadDatabaseRateLimited(s3Client, database);
+
+                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                        {
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
+                    Thread.Sleep(TimeSpan.FromSeconds(30));
+                }
+            }
+        }
+
+
+        private static DateTime lastDatabaseUploadTime = DateTime.MinValue;
+        private static TimeSpan databaseUploadDelay = TimeSpan.FromMinutes(30);
+        private static int databaseUploadItemThreshold = 18;
+
+        private static int itemsAddedToDatabase = 0;
+
+        public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database)
+        {
+            // TODO : Clean database listings for sharing (remove unused data, etc)
+
+            TimeSpan timeSinceLastUpload = DateTime.UtcNow - lastDatabaseUploadTime;
+            if (itemsAddedToDatabase >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay)
+            {
+                PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
+                {
+                    BucketName = "nwmarketdata",
+                    Key = "database.json",
+                    FilePath = database.GetDataBasePathOnDisk(),
+                });
+            }
+            else
+            {
+                Console.WriteLine($"Skipping database upload, criteria not met. Items Added: {itemsAddedToDatabase} >= {databaseUploadItemThreshold} and Time Passed: {timeSinceLastUpload.TotalMinutes} minutes >= {databaseUploadDelay.TotalMinutes} minutes");
             }
         }
 
@@ -148,14 +170,16 @@ namespace NW_Market_OCR
             return wordBucketsByHeight;
         }
 
+        // TesseractOnly does better with prices and detecting decimals, but Default does better detecting words
+        // TODO: Try and switch to high quality raw tesseract instead of IronOcr
         private static List<OcrTextArea> RunIronOcr(string processedPath)
         {
             List<OcrTextArea> textAreas = new();
 
             IronTesseract Ocr = new();
             Ocr.Configuration.ReadBarCodes = false;
-            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractAndLstm;
-            Ocr.Configuration.BlackListCharacters = "`~";
+            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
+            Ocr.Configuration.BlackListCharacters = "`~|[]{}\\/,";
             using (var Input = new OcrInput())
             {
                 Input.AddImage(processedPath);
@@ -215,30 +239,37 @@ namespace NW_Market_OCR
                 }
                 else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
                 {
-                    marketListing.OriginalAvailable = word.Text;
+                    marketListing.Latest.OriginalAvailable = word.Text;
                     if (int.TryParse(word.Text, out int available))
                     {
-                        marketListing.Available = available;
-                    }
-                }
-                else if (ColumnMappings.OWNED_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.OriginalOwned = word.Text;
-                    if (int.TryParse(word.Text, out int owned))
-                    {
-                        marketListing.Owned = owned;
+                        marketListing.Latest.Available = available;
                     }
                 }
                 else if (ColumnMappings.TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
                 {
-                    marketListing.OriginalTimeRemaining = word.Text;
+                    marketListing.Latest.OriginalTimeRemaining = word.Text;
                     string cleanedWord = word.Text.Replace(" ", "");
+
+                    // Manual corrections
+                    if(cleanedWord.EndsWith("4"))
+                    {
+                        cleanedWord = cleanedWord.Substring(0, cleanedWord.Length - 1) + "h";
+                    }
+                    if (cleanedWord.Length == 2 && (cleanedWord.StartsWith("a") || cleanedWord.StartsWith("g")))
+                    {
+                        cleanedWord = "6" + cleanedWord.Substring(1, cleanedWord.Length - 1);
+                    }
+                    if (cleanedWord.Length == 2 && cleanedWord.StartsWith("S"))
+                    {
+                        cleanedWord = "9" + cleanedWord.Substring(1, cleanedWord.Length - 1);
+                    }
+
                     if (cleanedWord.EndsWith("h"))
                     {
                         string amountText = cleanedWord.Replace("h", "");
                         if (int.TryParse(amountText, out int timeAmount))
                         {
-                            marketListing.TimeRemaining = TimeSpan.FromHours(timeAmount);
+                            marketListing.Latest.TimeRemaining = TimeSpan.FromHours(timeAmount);
                         }
                     }
                     else if (cleanedWord.EndsWith("d"))
@@ -246,7 +277,7 @@ namespace NW_Market_OCR
                         string amountText = cleanedWord.Replace("d", "");
                         if (int.TryParse(amountText, out int timeAmount))
                         {
-                            marketListing.TimeRemaining = TimeSpan.FromDays(timeAmount);
+                            marketListing.Latest.TimeRemaining = TimeSpan.FromDays(timeAmount);
                         }
                     }
                 }
@@ -276,10 +307,10 @@ namespace NW_Market_OCR
             }
             marketListing.Location = newLocation;
 
-            if (marketListing.Available == 0)
+            if (marketListing.Latest.Available == 0)
             {
                 Console.WriteLine($"Updating available from 0 to 1...");
-                marketListing.Available = 1;
+                marketListing.Latest.Available = 1;
             }
 
             return marketListing;
@@ -343,39 +374,6 @@ namespace NW_Market_OCR
             return (minDistanceItemName, minDistance);
         }
 
-        private static string CleanInputImage(string path)
-        {
-            string fileDirectory = Path.GetDirectoryName(path);
-            string processedPath = Path.Combine(fileDirectory, "processed.png");
-
-            Console.WriteLine($"Cleaning image at '{path}'...");
-
-            using (Bitmap myBitmap = new Bitmap(path))
-            {
-                const float limit = 0.2f;
-                for (int i = 0; i < myBitmap.Width; i++)
-                {
-                    for (int j = 0; j < myBitmap.Height; j++)
-                    {
-                        Color c = myBitmap.GetPixel(i, j);
-                        if (c.GetBrightness() > limit)
-                        {
-                            myBitmap.SetPixel(i, j, Color.Black);
-                        }
-                        else
-                        {
-                            myBitmap.SetPixel(i, j, Color.White);
-                        }
-                    }
-                }
-
-                myBitmap.Save(processedPath);
-            }
-
-            Console.WriteLine($"Cleaned image saved to '{processedPath}'");
-            return processedPath;
-        }
-
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();
 
         private static MarketColumnMappings ColumnMappings = new MarketColumnMappings();
@@ -383,8 +381,9 @@ namespace NW_Market_OCR
         private class MarketColumnMappings
         {
             private Point DEFAULT_SIZE = new Point(1130, 730);
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(8, 785);
-            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(786, 1716);
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(8, 754);
+            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(758, 1132);
+            // GS 1133
             private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(1927, 2074);
             private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(2075, 2236);
             private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(2237, 2385);
@@ -415,7 +414,7 @@ namespace NW_Market_OCR
             }
         }
 
-        private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath)
+        private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath, DateTime captureTime)
         {
             Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
 
@@ -424,14 +423,16 @@ namespace NW_Market_OCR
                 ColumnMappings.SetSize(new Point(image.Width, image.Height));
             }
 
-            // TODO: Add batch id and listing id to objects
+            string batchId = Guid.NewGuid().ToString("D");
 
             List<MarketListing> marketListings = new List<MarketListing>();
             foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight.OrderBy(_ => _.Key))
             {
                 MarketListing newMarketListing = ValidateAndFixMarketListing(CreateMarketListing(wordBucket.Value));
+                newMarketListing.Latest.BatchId = batchId;
+                newMarketListing.Latest.Time = captureTime;
 
-                if (newMarketListing.Name != null)
+                if (newMarketListing.Name != null && newMarketListing.Latest.TimeRemaining != default)
                 {
                     marketListings.Add(newMarketListing);
                 }
@@ -468,15 +469,13 @@ namespace NW_Market_OCR
                 Console.WriteLine($"{marketListing}");
             }
 
-            database.Listings.AddRange(cleanedMarketListing);
+            MergeSimilarListingsIntoDatabase(cleanedMarketListing, database);
 
-            // TODO: Purge entries older than 1 week
+            itemsAddedToDatabase += cleanedMarketListing.Count;
 
-            // TODO: Remove likely duplicates
+            // TODO: Purge entries older than X months
 
             database.SaveDatabaseToDisk();
-
-            // TODO: Upload database somewhere to share
         }
 
         private static void CorrectMarketListingPricesAscending(List<MarketListing> marketListings)
@@ -532,39 +531,6 @@ namespace NW_Market_OCR
             } while (updatedPrice);
         }
 
-        private static bool IsPreviousTwoAscending(int index, List<MarketListing> marketListings)
-        {
-            // Start of array
-            if (index - 2 < 0)
-            {
-                return true;
-            }
-
-            return marketListings[index - 2].Price <= marketListings[index - 1].Price && marketListings[index - 1].Price <= marketListings[index].Price;
-        }
-
-        private static bool IsNextTwoAscending(int index, List<MarketListing> marketListings)
-        {
-            // End of array
-            if (index + 2 >= marketListings.Count)
-            {
-                return true;
-            }
-
-            return marketListings[index].Price <= marketListings[index + 1].Price && marketListings[index + 1].Price <= marketListings[index + 2].Price;
-        }
-
-        private static bool IsCurrentInOrder(int index, List<MarketListing> marketListings)
-        {
-            // Start or end of array
-            if (index <= 0 || index + 1 >= marketListings.Count)
-            {
-                return true;
-            }
-
-            return marketListings[index - 1].Price <= marketListings[index].Price && marketListings[index].Price <= marketListings[index + 1].Price;
-        }
-
         private static bool IsSimilarSetOfMarketListings(List<MarketListing> marketListings)
         {
             bool foundDuplicateListings = false;
@@ -577,10 +543,9 @@ namespace NW_Market_OCR
                     MarketListing previous = previousMarketListings[i];
                     MarketListing current = marketListings[i];
 
-                    matchingDatapoints += previous.Available == current.Available ? 1 : 0;
+                    matchingDatapoints += previous.Latest.Available == current.Latest.Available ? 1 : 0;
                     matchingDatapoints += previous.Location == current.Location ? 1 : 0;
                     matchingDatapoints += previous.Name == current.Name ? 1 : 0;
-                    matchingDatapoints += previous.Owned == current.Owned ? 1 : 0;
                     matchingDatapoints += previous.Price == current.Price ? 1 : 0;
                 }
 
@@ -593,6 +558,64 @@ namespace NW_Market_OCR
             }
 
             return foundDuplicateListings;
+        }
+
+        // Only supports merging newer listings, could make this work for merging any order, but would be more complicated
+        private static void MergeSimilarListingsIntoDatabase(List<MarketListing> newMarketListings, MarketDatabase database)
+        {
+            List<MarketListing> matchedMarketListings = new List<MarketListing>();
+
+            foreach (MarketListing newMarketListing in newMarketListings)
+            {
+                IEnumerable<MarketListing> newerListings = database.Listings
+                    // Listing is newer than the latest
+                    .Where(_ => _.Latest.Time <= newMarketListing.Latest.Time);
+
+                IEnumerable<MarketListing> unexpiredListings = newerListings
+                    // Not Expired
+                    .Where(_ => _.Latest.Time + _.Latest.TimeRemaining > DateTime.UtcNow);
+
+                IEnumerable<MarketListing> matchingFixedValueListings = unexpiredListings
+                    // Same fixed values
+                    .Where(_ =>
+                        _.Location == newMarketListing.Location &&
+                        _.Name == newMarketListing.Name &&
+                        _.Price == newMarketListing.Price);
+
+                IEnumerable<MarketListing> reasonableChangingValueListings = matchingFixedValueListings
+                    // Reasonable changing values
+                    .Where(_ =>
+                        _.Latest.Available >= newMarketListing.Latest.Available &&
+                        _.Latest.TimeRemaining >= newMarketListing.Latest.TimeRemaining);
+
+                IEnumerable<MarketListing> unmatchedListings = reasonableChangingValueListings
+                    // The existing market listing hasn't already been matched with one of the other new listings
+                    .Where(_ =>
+                        !matchedMarketListings.Contains(_));
+
+                IEnumerable<MarketListing> differentBatchListings = unmatchedListings
+                    // Didn't come from the same batch of market listings
+                    .Where(_ =>
+                        _.Latest.BatchId != newMarketListing.Latest.BatchId);
+
+                IEnumerable<MarketListing> existingListingsByPreference = differentBatchListings
+                    // Prefer similar expiration times
+                    .OrderBy(_ => Math.Abs(((_.Latest.Time + _.Latest.TimeRemaining) - (newMarketListing.Latest.Time + newMarketListing.Latest.TimeRemaining)).TotalHours))
+                    // Prefer similar available amounts
+                    .OrderBy(_ => Math.Abs(_.Latest.Available - newMarketListing.Latest.Available));
+
+                MarketListing bestMatch = existingListingsByPreference.FirstOrDefault();
+
+                if (bestMatch == null)
+                {
+                    database.Listings.Add(newMarketListing);
+                }
+                else
+                {
+                    bestMatch.MergeIntoThis(newMarketListing);
+                    matchedMarketListings.Add(bestMatch);
+                }
+            }
         }
     }
 

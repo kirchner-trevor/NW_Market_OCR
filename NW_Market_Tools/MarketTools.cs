@@ -254,7 +254,7 @@ namespace NW_Market_Tools
                     {
                         foreach (TimePrices timePrices in marketSummary.LocationPrices.SelectMany(_ => _.TimePrices))
                         {
-                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Available > MIN_AVAILABLE).Select(_ => _.Price);
+                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Latest.Available > MIN_AVAILABLE).Select(_ => _.Price);
                             float minPriceOfQuantity = pricesOfQuantity.Any() ? pricesOfQuantity.Min() : float.MaxValue;
                             if ((minPriceOfQuantity * recipeDataIngredient.Quantity) < minimumCostToBuy)
                             {
@@ -262,7 +262,7 @@ namespace NW_Market_Tools
                                 minimumCostToBuy = timePrices.Minimum * recipeDataIngredient.Quantity;
                                 marketListingTotalAvailableAtLocation = timePrices.Listings
                                     .Where(_ => (Math.Abs(_.Price - marketListingToBuy.Price) <= marketListingToBuy.Price * SIMILAR_COST_PERCENTAGE) && _.Location == marketListingToBuy.Location)
-                                    .Sum(_ => _.Available);
+                                    .Sum(_ => _.Latest.Available);
                             }
                         }
                     }

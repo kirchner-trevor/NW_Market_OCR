@@ -262,6 +262,7 @@ namespace NW_Market_Collector
         {
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
+            DateTime fileCreationTime = File.GetCreationTimeUtc(path);
             string processedPath = CleanInputImage(path);
             string textContent = CleanTextContent(ExtractTextContent(processedPath));
 
@@ -275,7 +276,7 @@ namespace NW_Market_Collector
                     Key = Guid.NewGuid().ToString("D"),
                 };
                 putRequest.StreamTransferProgress += new EventHandler<StreamTransferProgressArgs>(UpdateProgress);
-                putRequest.Metadata.Add("timestamp", DateTime.UtcNow.ToString("o"));
+                putRequest.Metadata.Add("timestamp", fileCreationTime.ToString("o"));
                 putRequest.Metadata.Add("textcontent", textContent);
                 putRequest.Metadata.Add("user", user);
 
