@@ -13,13 +13,22 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.4" />
     <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
-    <PackageReference Include="IronOcr" Version="2021.9.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="5.0.0" />
+    <PackageReference Include="Tesseract" Version="4.1.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
     <ProjectReference Include="..\NwdbInfoApi\NwdbInfoApi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="tessdata\best\eng.traineddata">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="tessdata\normal\eng.traineddata">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

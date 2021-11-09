@@ -1,7 +1,6 @@
 ﻿using Amazon;
 using Amazon.S3;
 using Amazon.S3.Model;
-using IronOcr;
 using Microsoft.Extensions.Configuration;
 using MW_Market_Model;
 using NwdbInfoApi;
@@ -12,14 +11,17 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Tesseract;
 
 namespace NW_Market_OCR
 {
     class MarketOCR
     {
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
-        private const int WORD_BUCKET_Y_GROUPING_THRESHOLD = 100;
-        private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunIronOcr;
+        private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
+        private const string OCR_KIND_DECIMALS = "decimals";
+        private const string OCR_KIND_LETTERS = "letters";
+        private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
 
@@ -115,7 +117,6 @@ namespace NW_Market_OCR
             }
         }
 
-
         private static DateTime lastDatabaseUploadTime = DateTime.MinValue;
         private static TimeSpan databaseUploadDelay = TimeSpan.FromMinutes(30);
         private static int databaseUploadItemThreshold = 18;
@@ -135,6 +136,7 @@ namespace NW_Market_OCR
                     Key = "database.json",
                     FilePath = database.GetDataBasePathOnDisk(),
                 });
+                lastDatabaseUploadTime = DateTime.UtcNow;
             }
             else
             {
@@ -156,7 +158,7 @@ namespace NW_Market_OCR
             foreach (OcrTextArea word in words)
             {
                 // Find the group within 100 of the words Y value
-                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < WORD_BUCKET_Y_GROUPING_THRESHOLD);
+                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < MarketColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
                 if (wordBucketsByHeight.ContainsKey(yGroupKey))
                 {
                     wordBucketsByHeight[yGroupKey].Add(word);
@@ -170,25 +172,41 @@ namespace NW_Market_OCR
             return wordBucketsByHeight;
         }
 
-        // TesseractOnly does better with prices and detecting decimals, but Default does better detecting words
-        // TODO: Try and switch to high quality raw tesseract instead of IronOcr
-        private static List<OcrTextArea> RunIronOcr(string processedPath)
+        private static TesseractEngine tesseractEngineForDecimals = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/normal"), "eng", EngineMode.TesseractOnly);
+        private static TesseractEngine tesseractOcrForLetters = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/best"), "eng", EngineMode.Default);
+
+        private static List<OcrTextArea> RunTesseractOcr(string processedPath)
+        {
+            List<OcrTextArea> textAreas = new List<OcrTextArea>();
+            textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_DECIMALS, tesseractEngineForDecimals));
+            textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_LETTERS, tesseractOcrForLetters));
+            return textAreas;
+        }
+
+        private static List<OcrTextArea> RunTesseractOcr(string processedPath, string source, TesseractEngine tesseractEngine)
         {
             List<OcrTextArea> textAreas = new();
 
-            IronTesseract Ocr = new();
-            Ocr.Configuration.ReadBarCodes = false;
-            Ocr.Configuration.EngineMode = TesseractEngineMode.TesseractOnly;
-            Ocr.Configuration.BlackListCharacters = "`~|[]{}\\/,";
-            using (var Input = new OcrInput())
+            using (Pix image = Pix.LoadFromFile(processedPath))
             {
-                Input.AddImage(processedPath);
-
-                OcrResult Result = Ocr.Read(Input);
-
-                foreach (OcrResult.Word word in Result.Words)
+                using (Page page = tesseractEngine.Process(image))
                 {
-                    textAreas.Add(new OcrTextArea { Text = word.Text, X = word.X, Y = word.Y });
+                    using (ResultIterator resultIterator = page.GetIterator())
+                    {
+                        do
+                        {
+                            if (resultIterator.TryGetBoundingBox(PageIteratorLevel.Word, out Rect bounds))
+                            {
+                                textAreas.Add(new OcrTextArea
+                                {
+                                    Text = resultIterator.GetText(PageIteratorLevel.Word),
+                                    X = bounds.X1,
+                                    Y = bounds.Y1,
+                                    Kind = source,
+                                });
+                            }
+                        } while (resultIterator.Next(PageIteratorLevel.Word));
+                    }
                 }
             }
 
@@ -221,21 +239,25 @@ namespace NW_Market_OCR
         {
             MarketListing marketListing = new MarketListing();
 
-            foreach (OcrTextArea word in looseWordLine)
+            foreach (OcrTextArea word in looseWordLine.Where(_ => _.Kind == OCR_KIND_DECIMALS))
             {
-                if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
-                {
-                    // Sometimes the name gets split into pieces
-                    marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
-                    marketListing.Name = marketListing.OriginalName;
-                }
-                else if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
+                if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalPrice = word.Text;
                     if (float.TryParse(word.Text, out float price))
                     {
                         marketListing.Price = price;
                     }
+                }
+            }
+
+            foreach (OcrTextArea word in looseWordLine.Where(_ => _.Kind == OCR_KIND_LETTERS))
+            {
+                if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
+                {
+                    // Sometimes the name gets split into pieces
+                    marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
+                    marketListing.Name = marketListing.OriginalName;
                 }
                 else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
                 {
@@ -251,7 +273,7 @@ namespace NW_Market_OCR
                     string cleanedWord = word.Text.Replace(" ", "");
 
                     // Manual corrections
-                    if(cleanedWord.EndsWith("4"))
+                    if (cleanedWord.EndsWith("4") || cleanedWord.EndsWith("n"))
                     {
                         cleanedWord = cleanedWord.Substring(0, cleanedWord.Length - 1) + "h";
                     }
@@ -380,14 +402,22 @@ namespace NW_Market_OCR
 
         private class MarketColumnMappings
         {
-            private Point DEFAULT_SIZE = new Point(1130, 730);
+            // Ocr Units / Ocr Units
+            private static Point IRON_OCR_SIZE = new Point(2648, 1711);
+            private static Point TESSERACT_OCR_SIZE = new Point(1130, 730);
+            private static float X_OCR_RATIO = TESSERACT_OCR_SIZE.X / (IRON_OCR_SIZE.X * 1f);
+
+            // Pixels
+            private static Point DEFAULT_SIZE = new Point(1130, 730);
+
+            // Iron Ocr Coordinates
             private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(8, 754);
             private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(758, 1132);
             // GS 1133
             private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(1927, 2074);
             private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(2075, 2236);
             private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(2237, 2385);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(2386, 4300);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(2386, 2648);
 
             public Range NAME_TEXT_X_RANGE { get; private set; }
             public Range PRICE_TEXT_X_RANGE { get; private set; }
@@ -396,6 +426,9 @@ namespace NW_Market_OCR
             public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
             public Range LOCATION_TEXT_X_RANGE { get; private set; }
 
+            private static int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 100;
+            public static int WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * X_OCR_RATIO);
+
             public MarketColumnMappings()
             {
                 SetSize(DEFAULT_SIZE);
@@ -403,7 +436,8 @@ namespace NW_Market_OCR
 
             public void SetSize(Point size)
             {
-                float xRatio = size.X / DEFAULT_SIZE.X;
+                // None * Pixels / Ocr Units
+                float xRatio = (X_OCR_RATIO * size.X) / DEFAULT_SIZE.X;
 
                 NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
                 PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
@@ -567,22 +601,26 @@ namespace NW_Market_OCR
 
             foreach (MarketListing newMarketListing in newMarketListings)
             {
-                IEnumerable<MarketListing> newerListings = database.Listings
-                    // Listing is newer than the latest
-                    .Where(_ => _.Latest.Time <= newMarketListing.Latest.Time);
-
-                IEnumerable<MarketListing> unexpiredListings = newerListings
+                IEnumerable<MarketListing> unexpiredListings = database.Listings
                     // Not Expired
-                    .Where(_ => _.Latest.Time + _.Latest.TimeRemaining > DateTime.UtcNow);
+                    .Where(_ => _.Latest.Time + _.Latest.TimeRemaining > newMarketListing.Latest.Time);
 
-                IEnumerable<MarketListing> matchingFixedValueListings = unexpiredListings
+                IEnumerable<MarketListing> matchingNameListings = unexpiredListings
+                    // Same name
+                    .Where(_ =>
+                        _.Name == newMarketListing.Name);
+
+                IEnumerable<MarketListing> matchingFixedValuesListings = matchingNameListings
                     // Same fixed values
                     .Where(_ =>
                         _.Location == newMarketListing.Location &&
-                        _.Name == newMarketListing.Name &&
                         _.Price == newMarketListing.Price);
 
-                IEnumerable<MarketListing> reasonableChangingValueListings = matchingFixedValueListings
+                IEnumerable<MarketListing> newerListings = matchingFixedValuesListings
+                    // Listing is newer than the latest
+                    .Where(_ => _.Latest.Time <= newMarketListing.Latest.Time);
+
+                IEnumerable<MarketListing> reasonableChangingValueListings = newerListings
                     // Reasonable changing values
                     .Where(_ =>
                         _.Latest.Available >= newMarketListing.Latest.Available &&
@@ -617,6 +655,42 @@ namespace NW_Market_OCR
                 }
             }
         }
+
+        // This doesn't work becaus there will always be market outliers that don't fit close to the average
+        //private static void TryAdjustListingPriceBasedOnAveragePriceOfItem(MarketListing newMarketListing, IEnumerable<MarketListing> matchingNameListings)
+        //{
+        //    if (matchingNameListings.Count() > MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT)
+        //    {
+        //        float averagePrice = matchingNameListings.Average(_ => _.Price);
+        //        float[] priceOptions = new[]
+        //        {
+        //                newMarketListing.Price / 100f,
+        //                newMarketListing.Price / 10f,
+        //                newMarketListing.Price * 10f,
+        //                newMarketListing.Price * 100f
+        //            };
+
+        //        float minDifference = Math.Abs(newMarketListing.Price - averagePrice);
+        //        float priceChoice = newMarketListing.Price;
+        //        bool foundBetterPrice = false;
+        //        foreach (float priceOption in priceOptions)
+        //        {
+        //            float difference = Math.Abs(priceOption - averagePrice);
+        //            if (difference < minDifference)
+        //            {
+        //                minDifference = difference;
+        //                priceChoice = priceOption;
+        //                foundBetterPrice = true;
+        //            }
+        //        }
+
+        //        if (foundBetterPrice)
+        //        {
+        //            Console.WriteLine($"Corrected price for '{newMarketListing.Name}' from {newMarketListing.Price} to {priceChoice} using closest to average");
+        //            newMarketListing.Price = priceChoice;
+        //        }
+        //    }
+        //}
     }
 
     public class OcrTextArea
@@ -624,5 +698,6 @@ namespace NW_Market_OCR
         public int X;
         public int Y;
         public string Text;
+        public string Kind;
     }
 }
