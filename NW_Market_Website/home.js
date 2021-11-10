@@ -12,6 +12,7 @@ export default {
                     v-model="filter"
                     type="search"
                     placeholder="Type to Search"
+                    debounce="500"
                 ></b-form-input>
 
                 <b-input-group-append>
@@ -39,6 +40,27 @@ export default {
                 {
                     key: 'Location',
                     sortable: true,
+                },
+                {
+                    key: 'available',
+                    sortable: true,
+                    sortByFormatted: true,
+                    formatter: (value, key, item) => {
+                        return item != null ? item.Instances[0].Available : null;
+                    }
+                },
+                {
+                    key: 'expires',
+                    formatter: (value, key, item) => {
+                        let hoursRemaining = this.getHoursFromTimeSpan(item.Instances[0].TimeRemaining);
+                        return item != null ? moment(item.Instances[0].Time).add(hoursRemaining, 'h').fromNow() : null;
+                    }
+                },
+                {
+                    key: 'lastUpdated',
+                    formatter: (value, key, item) => {
+                        return item != null ? moment(item.Instances[0].Time).fromNow() : null;
+                    }
                 }
             ],
             filter: null
@@ -54,6 +76,25 @@ export default {
             .then(data => {
                 this.marketData = data;
             });
+        },
+        getHoursFromTimeSpan(timeSpan) {
+            if(!timeSpan) {
+                return timeSpan;
+            }
+
+            let parts = timeSpan.split('.');
+
+            if (parts.length < 1 || parts.length > 2) {
+                return timeSpan;
+            }
+
+            let smallParts = parts[parts.length - 1].split(':');
+
+            if (smallParts.length != 3) {
+                return timeSpan;
+            }
+
+            return parseInt(parts[0]) * 24 + parseInt(smallParts[0]);
         }
     }
 };
