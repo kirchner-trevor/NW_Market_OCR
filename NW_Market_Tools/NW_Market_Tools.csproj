@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="3.7.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
     <ProjectReference Include="..\NwdbInfoApi\NwdbInfoApi.csproj" />
   </ItemGroup>

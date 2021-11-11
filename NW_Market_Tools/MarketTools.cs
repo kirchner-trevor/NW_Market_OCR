@@ -1,19 +1,25 @@
-﻿using MW_Market_Model;
+﻿using Amazon;
+using Amazon.S3;
+using Amazon.S3.Model;
+using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace NW_Market_Tools
 {
     class MarketTools
     {
-        private static string[] TARGET_TRADESKILLS = new[] { "Weaponsmithing", "Jewelcrafting", "Arcana", "Furnishing", }; // "Armoring", "Engineering", "Cooking",
+        private static string[] TARGET_TRADESKILLS = new[] { "Weaponsmithing", "Jewelcrafting", "Arcana", "Furnishing", "Armoring", "Engineering", "Cooking", };
         private static int[] TARGET_TRADESKILL_LEVELS = new[] { 1, 50, 100, 150 };
         private static string TARGET_ITEM = default;
 
-        private static DateTime DATE_FILTER = DateTime.Now.AddDays(-1);
+        private static DateTime DATE_FILTER = DateTime.Now.AddDays(-5);
         private static string LOCATION_FILTER = default;
         private static float SIMILAR_COST_PERCENTAGE = 0.25f; // How much more expensive an item can be and still get included in the total available amount
         private static int MIN_AVAILABLE = 10;
@@ -21,14 +27,20 @@ namespace NW_Market_Tools
         private const bool INCLUDE_MATERIAL_CONVERTER_RECIPES = false;
         private const bool SHOW_ALL_RECIPES = false;
         private const bool LIST_UNOBTAINABLE_ITEMS = true;
+        private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
 
         static async Task Main(string[] args)
         {
-            MarketDatabase marketDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
+            string credentials = args[0];
+            string[] credentialParts = credentials.Split(":");
+            string accessKeyId = credentialParts[0];
+            string secretAccessKey = credentialParts[1];
+
+            MarketDatabase marketDatabase = new MarketDatabase(DATA_DIRECTORY);
             marketDatabase.LoadDatabaseFromDisk();
             Console.WriteLine($"Market Listings: {marketDatabase.Listings.Count}");
 
-            NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
+            NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY);
             List<ItemsPageData> items = await nwdbInfoApiClient.ListItemsAsync();
             Console.WriteLine($"Items: {items.Count}");
 
@@ -38,8 +50,11 @@ namespace NW_Market_Tools
             List<RecipeData> recipeDetails = await nwdbInfoApiClient.ListDetailedRecipesAsync();
             Console.WriteLine($"Recipe Details: {recipeDetails.Count}");
 
+            AmazonS3Client s3Client = new AmazonS3Client(accessKeyId, secretAccessKey, RegionEndpoint.USEast2);
+
             Console.WriteLine("\n== Finding Best Recipes To Craft! ==\n");
 
+            List<CraftItemSuggestion> itemCraftingSuggestions = new List<CraftItemSuggestion>();
             List<RecipeDataIngredient> unobtainableIngredients = new List<RecipeDataIngredient>();
             foreach (string targetTradeskill in TARGET_TRADESKILLS)
             {
@@ -86,6 +101,9 @@ namespace NW_Market_Tools
                         {
                             Console.WriteLine($"{new string('-', 40)}");
                         }
+
+
+                        itemCraftingSuggestions.Add(ConvertToCraftItemSuggestion(recipeSummary));
                     }
 
                     if (LIST_UNOBTAINABLE_ITEMS)
@@ -116,6 +134,74 @@ namespace NW_Market_Tools
                     Console.WriteLine($"  {ingredient}");
                 }
             }
+
+            Console.WriteLine("Writing recipe suggestions to disk...");
+            string recipeSuggestionsPath = Path.Combine(DATA_DIRECTORY, "recipeSuggestions.json");
+            string json = JsonSerializer.Serialize(itemCraftingSuggestions.Where(_ => float.IsNormal(_.CostPerQuantity) && _.CostPerQuantity < float.MaxValue));
+            File.WriteAllText(recipeSuggestionsPath, json);
+            Console.WriteLine("Recipe suggestions written to disk!");
+
+            Console.WriteLine("Uploading recipe suggestions...");
+            PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = "nwmarketdata",
+                Key = "recipeSuggestions.json",
+                FilePath = recipeSuggestionsPath,
+            });
+            Console.WriteLine("Recipe suggestions uploaded!");
+        }
+
+        public static CraftItemSuggestion ConvertToCraftItemSuggestion(RecipeCraftSummary recipeSummary)
+        {
+            Dictionary<string, int> totalExperience = CalculateTradeskillExp(recipeSummary);
+            return new CraftItemSuggestion
+            {
+                RecipeId = recipeSummary.Recipe.Id,
+                Name = recipeSummary.Recipe.Name,
+                LevelRequirement = recipeSummary.Recipe.RecipeLevel,
+                Tradeskill = recipeSummary.Recipe.Tradeskill,
+                TotalExperience = totalExperience,
+                CostPerQuantity = recipeSummary.MinimumCost,
+                Quantity = recipeSummary.CraftCount,
+                ExperienceEfficienyForPrimaryTradekill = totalExperience[recipeSummary.Recipe.Tradeskill] / recipeSummary.MinimumCost,
+                Buys = recipeSummary.Buys.Select(_ => new BuyItemSuggestion
+                {
+                    Available = _.TotalAvailableAtLocation,
+                    Location = _.Location,
+                    Name = _.Name,
+                    CostPerQuantity = _.Listing.Price,
+                    Quantity = _.Quantity,
+                }).ToList(),
+                Crafts = recipeSummary.Crafts.Select(_ => ConvertToCraftItemSuggestion(_)).ToList(),
+            };
+        }
+
+        public class BuyItemSuggestion
+        {
+            public string Name { get; set; }
+            public int Quantity { get; set; }
+
+            public float CostPerQuantity { get; set; }
+            public int Available { get; set; }
+            public string Location { get; set; }
+        }
+
+        public class CraftItemSuggestion
+        {
+            public string RecipeId { get; set; }
+
+            public string Name { get; set; }
+            public int Quantity { get; set; }
+
+            public string Tradeskill { get; set; }
+            public int LevelRequirement { get; set; }
+            public float CostPerQuantity { get; set; }
+            public float ExperienceEfficienyForPrimaryTradekill { get; set; }
+
+            public Dictionary<string, int> TotalExperience { get; set; } = new Dictionary<string, int>();
+
+            public List<CraftItemSuggestion> Crafts { get; set; } = new List<CraftItemSuggestion>();
+            public List<BuyItemSuggestion> Buys { get; set; } = new List<BuyItemSuggestion>();
         }
 
         private static void WriteBuyCraftTreeToConsole(RecipeCraftSummary recipeSummary, Dictionary<string, RecipeBuyItemAction> itemBuys = null, int currentIndent = 0)
