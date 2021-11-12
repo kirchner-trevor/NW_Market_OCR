@@ -6,7 +6,7 @@ export default {
         </b-jumbotron>
         <b-card no-body>
             <b-tabs card>
-                <b-tab title="Listings" active>
+                <b-tab title="Listings" @click="loadMarketData">
                     <b-form-group
                     >
                         <b-input-group size="sm">
@@ -25,24 +25,58 @@ export default {
                     </b-form-group>
                     <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter"></b-table>
                 </b-tab>
-                <b-tab title="Recipes">
-                    <b-form-group
-                    >
-                        <b-input-group size="sm">
-                            <b-form-input
-                                id="filter-input"
-                                v-model="filter"
-                                type="search"
-                                placeholder="Type to Search"
-                                debounce="500"
-                            ></b-form-input>
-
-                            <b-input-group-append>
-                                <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
-                            </b-input-group-append>
-                        </b-input-group>
-                    </b-form-group>
-                    <b-table striped hover borderless :items="recipeSuggestions" :fields="recipeSuggestionFields" :filter="filter"></b-table>
+                <b-tab title="Recipes" @click="loadRecipeSuggestions" active>
+                    <b-row align-h="start">
+                        <b-col cols="2">
+                            <b-form-group label-for="tradeskill-filter" label="Tradeskill">
+                                <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions"></b-form-select>
+                            </b-form-group>
+                        </b-col>
+                            
+                        <b-col cols="2">
+                            <b-form-group label-for="level-filter" label="Level">
+                                <b-form-input id="level-filter" v-model="levelFilter" type="number"></b-form-input>
+                            </b-form-group>
+                        </b-col>
+                    </b-row>
+                    <b-card-group columns>
+                        <b-card v-for="recipeSuggestion in filteredRecipeSuggestions" :key="recipeSuggestion.RecipeId">
+                            <b-card-title>{{recipeSuggestion.Name}}</b-card-title>
+                            <b-card-sub-title>{{recipeSuggestion.Tradeskill}} {{recipeSuggestion.LevelRequirement}}</b-card-sub-title>
+                            </br>
+                            <p>
+                            Cost: $\{{Math.round(recipeSuggestion.CostPerQuantity * 100) / 100}} ea</br>
+                            Efficiency: {{Math.round(recipeSuggestion.ExperienceEfficienyForPrimaryTradekill * 100) / 100}} xp/$
+                            </p>
+                            <p>
+                            Experience
+                            <ul>
+                                <li v-for="(experience, tradeskill) in recipeSuggestion.TotalExperience" :key="tradeskill">
+                                {{experience}} {{tradeskill}}
+                                </li>
+                            </ul>
+                            </p>
+                            <p>
+                            Ingredients
+                            <ul>
+                                <li v-for="buy in recipeSuggestion.Buys" :key="recipeSuggestion.RecipeId + buy.Name">
+                                Buy x{{buy.Quantity}} {{buy.Name}} for $\{{buy.CostPerQuantity}} ea @ {{buy.Location}} (x{{buy.Available}})
+                                </li>
+                                <li v-for="craft in recipeSuggestion.Crafts" :key="recipeSuggestion.RecipeId + craft.Name">
+                                Craft x{{craft.Quantity}} {{craft.Name}}
+                                    <ul>
+                                        <li v-for="innerBuy in craft.Buys" :key="craft.RecipeId + innerBuy.Name">
+                                        Buy x{{innerBuy.Quantity}} {{innerBuy.Name}} for $\{{innerBuy.CostPerQuantity}} ea @ {{innerBuy.Location}} (x{{innerBuy.Available}})
+                                        </li>
+                                        <li v-for="innerCraft in craft.Crafts" :key="craft.RecipeId + innerCraft.Name">
+                                        Craft x{{innerCraft.Quantity}} {{innerCraft.Name}}
+                                        </li>
+                                    </ul>
+                                </li>
+                            </ul>
+                            </p>
+                        </b-card>
+                    </b-card-group>
                 </b-tab>
             </b-tabs>
         </b-card>
@@ -50,9 +84,11 @@ export default {
     `,
     data() {
         return {
+            marketDataLoaded: false,
             marketData: {
                 Listings: [],
             },
+            recipeSuggestionsLoaded: false,
             recipeSuggestions: [],
             listingFields: [
                 {
@@ -89,67 +125,47 @@ export default {
                     }
                 }
             ],
-            recipeSuggestionFields: [
-                {
-                    key: 'Name',
-                    sortable: true,
-                },
-                {
-                    key: 'Tradeskill',
-                    sortable: true,
-                },
-                {
-                    key: 'LevelRequirement',
-                    label: 'Level',
-                    sortable: true,
-                },
-                {
-                    key: 'CostPerQuantity',
-                    label: 'Cost (ea)',
-                    sortable: true,
-                    formatter: (value, key, item) => {
-                        return '$' + Math.round(value * 100) / 100;
-                    }
-                },
-                {
-                    key: 'ExperienceEfficienyForPrimaryTradekill',
-                    label: 'Efficiency (xp/gp)',
-                    sortable: true,
-                    formatter: (value, key, item) => {
-                        return Math.round(value * 100) / 100;
-                    }
-                },
-                {
-                    key: 'Crafts',
-                },
-                {
-                    key: 'Buys',
-                },
+            tradeskillFilter: null,
+            tradeskillOptions: [
+                '',
+                'Arcana',
+                'Armoring',
+                'Cooking',
+                'Engineering',
+                'Furnishing',
+                'Jewelcrafting',
+                'Weaponsmithing',
             ],
+            levelFilter: null,
             filter: null
         };
     },
-    beforeMount() {
-        this.getMarketData();
-        this.getRecipeSuggestions();
+    mounted() {
+        this.loadRecipeSuggestions();
     },
     methods: {
-        getMarketData() {
-            fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/database.json")
-            .then(response => response.json())
-            .then(data => {
-                this.marketData = data;
-            });
+        loadMarketData() {
+            if (!this.marketDataLoaded) {
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/database.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.marketData = data;
+                        this.marketDataLoaded = true;
+                    });
+            }
         },
-        getRecipeSuggestions() {
-            fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/recipeSuggestions.json")
-            .then(response => response.json())
-            .then(data => {
-                this.recipeSuggestions = data;
-            });
+        loadRecipeSuggestions() {
+            if (!this.recipeSuggestionsLoaded) {
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/recipeSuggestions.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.recipeSuggestions = data;
+                        this.recipeSuggestionsLoaded = true;
+                    });
+            }
         },
         getHoursFromTimeSpan(timeSpan) {
-            if(!timeSpan) {
+            if (!timeSpan) {
                 return timeSpan;
             }
 
@@ -166,6 +182,13 @@ export default {
             }
 
             return parseInt(parts[0]) * 24 + parseInt(smallParts[0]);
+        }
+    },
+    computed: {
+        filteredRecipeSuggestions() {
+            return this.recipeSuggestions
+                .filter(recipe => (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
+                .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
         }
     }
 };

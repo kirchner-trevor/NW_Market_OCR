@@ -137,7 +137,12 @@ namespace NW_Market_Tools
 
             Console.WriteLine("Writing recipe suggestions to disk...");
             string recipeSuggestionsPath = Path.Combine(DATA_DIRECTORY, "recipeSuggestions.json");
-            string json = JsonSerializer.Serialize(itemCraftingSuggestions.Where(_ => float.IsNormal(_.CostPerQuantity) && _.CostPerQuantity < float.MaxValue));
+            string json = JsonSerializer.Serialize(itemCraftingSuggestions
+                // Filter out any recipes that didn't calculate properly
+                .Where(_ => float.IsNormal(_.CostPerQuantity) && _.CostPerQuantity < float.MaxValue)
+                // Get only 1 element per recipe id
+                .GroupBy(_ => _.RecipeId)
+                .Select(_ => _.First()));
             File.WriteAllText(recipeSuggestionsPath, json);
             Console.WriteLine("Recipe suggestions written to disk!");
 
