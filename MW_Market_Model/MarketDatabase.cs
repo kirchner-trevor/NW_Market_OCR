@@ -28,11 +28,12 @@ namespace MW_Market_Model
 
         public DateTime Updated { get; set; }
 
-        public MarketItemSummary GetItemSummary(string name, string location = default, DateTime onOrAfter = default)
+        public MarketItemSummary GetItemSummary(string name, string location = default, DateTime onOrAfter = default, bool includeExpired = false)
         {
             List<IGrouping<string, MarketListing>> listingsForItem = Listings.Where(_ => _.Name == name)
                 .Where(_ => location == default || _.Location == location)
                 .Where(_ => onOrAfter == default || _.Latest.Time >= onOrAfter)
+                .Where(_ => includeExpired || _.IsFresh())
                 .GroupBy(_ => _.Location).ToList();
 
             MarketItemSummary summary = new MarketItemSummary();

@@ -51,6 +51,11 @@ namespace MW_Market_Model
             }
             return this;
         }
+
+        public bool IsFresh()
+        {
+            return Latest.Time + Latest.TimeRemaining > DateTime.UtcNow;
+        }
     }
 
     public class MarketListingInstance

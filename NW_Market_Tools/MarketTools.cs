@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,17 +16,18 @@ namespace NW_Market_Tools
     class MarketTools
     {
         private static string[] TARGET_TRADESKILLS = new[] { "Weaponsmithing", "Jewelcrafting", "Arcana", "Furnishing", "Armoring", "Engineering", "Cooking", };
-        private static int[] TARGET_TRADESKILL_LEVELS = new[] { 1, 50, 100, 150 };
+        private static int[] TARGET_TRADESKILL_LEVELS = new[] { 200 };
         private static string TARGET_ITEM = default;
 
-        private static DateTime DATE_FILTER = DateTime.Now.AddDays(-5);
+        private static DateTime DATE_FILTER = default;
         private static string LOCATION_FILTER = default;
         private static float SIMILAR_COST_PERCENTAGE = 0.25f; // How much more expensive an item can be and still get included in the total available amount
-        private static int MIN_AVAILABLE = 10;
+        private static int MIN_AVAILABLE = 1;
 
         private const bool INCLUDE_MATERIAL_CONVERTER_RECIPES = false;
         private const bool SHOW_ALL_RECIPES = false;
         private const bool LIST_UNOBTAINABLE_ITEMS = true;
+        private const bool INCLUDE_EXPIRED = false;
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
 
         static async Task Main(string[] args)
@@ -268,7 +268,7 @@ namespace NW_Market_Tools
                 itemsToBuy = new Dictionary<string, RecipeBuyItemAction>();
             }
 
-            foreach(RecipeBuyItemAction buy in recipeSummary.Buys)
+            foreach (RecipeBuyItemAction buy in recipeSummary.Buys)
             {
                 if (itemsToBuy.ContainsKey(buy.Listing.Name))
                 {
@@ -290,7 +290,7 @@ namespace NW_Market_Tools
                 }
             }
 
-            foreach(RecipeCraftSummary craftRecipeSummary in recipeSummary.Crafts)
+            foreach (RecipeCraftSummary craftRecipeSummary in recipeSummary.Crafts)
             {
                 CalculateItemsToBuy(craftRecipeSummary, itemsToBuy);
             }
@@ -368,12 +368,12 @@ namespace NW_Market_Tools
                     MarketListing marketListingToBuy = default;
                     int marketListingTotalAvailableAtLocation = 0;
                     float minimumCostToBuy = float.MaxValue;
-                    MarketItemSummary marketSummary = marketDatabase.GetItemSummary(recipeDataIngredient.Name, LOCATION_FILTER, DATE_FILTER);
+                    MarketItemSummary marketSummary = marketDatabase.GetItemSummary(recipeDataIngredient.Name, LOCATION_FILTER, DATE_FILTER, INCLUDE_EXPIRED);
                     if (marketSummary.LocationPrices.Count != 0)
                     {
                         foreach (TimePrices timePrices in marketSummary.LocationPrices.SelectMany(_ => _.TimePrices))
                         {
-                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Latest.Available > MIN_AVAILABLE).Select(_ => _.Price);
+                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Latest.Available >= MIN_AVAILABLE).Select(_ => _.Price);
                             float minPriceOfQuantity = pricesOfQuantity.Any() ? pricesOfQuantity.Min() : float.MaxValue;
                             if ((minPriceOfQuantity * recipeDataIngredient.Quantity) < minimumCostToBuy)
                             {
@@ -407,7 +407,7 @@ namespace NW_Market_Tools
                             minimumCostToCraft = ingredientRecipeCostToCraft;
                         }
                     }
-  
+
 
                     float ingredientOptionMinimumCost = Math.Min(minimumCostToBuy, minimumCostToCraft);
 

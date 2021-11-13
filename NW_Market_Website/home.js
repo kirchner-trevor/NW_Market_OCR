@@ -8,7 +8,10 @@ export default {
         </b-jumbotron>
         <b-card no-body>
             <b-tabs card>
-                <b-tab title="Listings" @click="loadMarketData">
+                <b-tab  @click="loadMarketData" lazy>
+                    <template #title>
+                        Listings <b-badge v-if="marketDataLoaded">{{marketData.Listings.length}}</b-badge><b-spinner type="border" v-if="!marketDataLoaded && marketDataRequested" small></b-spinner>
+                    </template>
                     <b-navbar toggleable="lg">
                         <b-navbar-brand href="#">Search</b-navbar-brand>
                         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
@@ -33,14 +36,39 @@ export default {
                             </b-navbar-nav>
                         </b-collapse>
                     </b-navbar>
-                    <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter"></b-table>
+                    <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter" :busy="!marketDataLoaded && marketDataRequested">
+                        <template #table-busy>
+                            <div class="text-center my-2">
+                                <b-spinner class="align-middle"></b-spinner>
+                                <strong>Loading...</strong>
+                            </div>
+                        </template>
+                    </b-table>
                 </b-tab>
-                <b-tab title="Recipes" @click="loadRecipeSuggestions" active>
+                <b-tab title="Recipes" @click="loadRecipeSuggestions" active lazy>
+                    <template #title>
+                        Recipes <b-badge v-if="recipeSuggestionsLoaded">{{recipeSuggestions.Suggestions.length}}</b-badge><b-spinner type="border" v-if="!recipeSuggestionsLoaded && recipeSuggestionsRequested" small></b-spinner>
+                    </template>
                     <b-navbar toggleable="lg">
                         <b-navbar-brand href="#">Search</b-navbar-brand>
                         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
                         <b-collapse id="nav-collapse" is-nav>
+                            <b-navbar-nav>
+                                <b-input-group class="mr-sm-2">
+                                    <b-form-input
+                                        id="filter-input"
+                                        v-model="filter"
+                                        type="search"
+                                        placeholder="Type to Search"
+                                        debounce="500"
+                                    ></b-form-input>
+
+                                    <b-input-group-append>
+                                        <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
+                                    </b-input-group-append>
+                                </b-input-group>
+                            </b-navbar-nav>
                             <b-navbar-nav>
                                 <b-nav-form class="mr-sm-2">
                                     <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions">
@@ -60,6 +88,10 @@ export default {
                         </b-collapse>
                     </b-navbar>
                     <b-card-group columns>
+                        <b-card v-if="!recipeSuggestionsLoaded && recipeSuggestionsRequested">
+                            <b-spinner class="align-middle"></b-spinner>
+                            <strong>Loading...</strong>
+                        </b-card>
                         <b-card v-for="recipeSuggestion in filteredRecipeSuggestions" :key="recipeSuggestion.RecipeId">
                             <b-card-title>{{recipeSuggestion.Name}}</b-card-title>
                             <b-card-sub-title>{{recipeSuggestion.Tradeskill}} {{recipeSuggestion.LevelRequirement}}</b-card-sub-title>
@@ -120,11 +152,13 @@ export default {
     `,
     data() {
         return {
+            marketDataRequested: false,
             marketDataLoaded: false,
             marketData: {
                 Updated: null,
                 Listings: [],
             },
+            recipeSuggestionsRequested: false,
             recipeSuggestionsLoaded: false,
             recipeSuggestions: {
                 Updated: null,
@@ -185,6 +219,7 @@ export default {
     methods: {
         loadMarketData() {
             if (!this.marketDataLoaded) {
+                this.marketDataRequested = true;
                 fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/database.json")
                     .then(response => response.json())
                     .then(data => {
@@ -195,6 +230,7 @@ export default {
         },
         loadRecipeSuggestions() {
             if (!this.recipeSuggestionsLoaded) {
+                this.recipeSuggestionsRequested = true;
                 fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/recipeSuggestions.json")
                     .then(response => response.json())
                     .then(data => {
@@ -226,7 +262,7 @@ export default {
     computed: {
         filteredRecipeSuggestions() {
             return this.recipeSuggestions.Suggestions
-                .filter(recipe => (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
+                .filter(recipe => (!this.filter || this.filter.split("\s").some(filterItem => recipe.Name.includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
                 .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
         },
         marketDataUpdated() {

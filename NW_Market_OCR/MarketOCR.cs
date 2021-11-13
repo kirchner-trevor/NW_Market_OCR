@@ -19,6 +19,7 @@ namespace NW_Market_OCR
     {
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
+        private const int MAX_AUTOCORRECT_DISTANCE = 5;
         private const string OCR_KIND_DECIMALS = "decimals";
         private const string OCR_KIND_LETTERS = "letters";
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
@@ -387,10 +388,17 @@ namespace NW_Market_OCR
                 {
                     if (autocorrect.OriginalContainsValues.Any(_ => value.Contains(_)))
                     {
+                        minDistance = 0;
                         minDistanceItemName = autocorrect.CorrectedValue;
                         Console.WriteLine($"Using manual autocorrect for '{value}'...");
                     }
                 }
+            }
+
+            // Distance is too far to use correction
+            if (minDistance > MAX_AUTOCORRECT_DISTANCE)
+            {
+                return (null, -1);
             }
 
             return (minDistanceItemName, minDistance);
