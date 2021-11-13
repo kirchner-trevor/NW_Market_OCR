@@ -84,6 +84,7 @@ namespace MW_Market_Model
                 string json = File.ReadAllText(GetDataBasePathOnDisk());
                 MarketDatabase loadedDatabase = JsonSerializer.Deserialize<MarketDatabase>(json, JSON_SERIALIZER_OPTIONS);
                 Listings = loadedDatabase.Listings;
+                Updated = loadedDatabase.Updated;
             }
         }
 

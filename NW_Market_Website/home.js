@@ -84,11 +84,27 @@ export default {
                                 <li v-for="craft in recipeSuggestion.Crafts" :key="recipeSuggestion.RecipeId + craft.Name">
                                 Craft x{{craft.Quantity}} {{craft.Name}}
                                     <ul>
-                                        <li v-for="innerBuy in craft.Buys" :key="craft.RecipeId + innerBuy.Name">
-                                        Buy x{{innerBuy.Quantity}} {{innerBuy.Name}} for $\{{innerBuy.CostPerQuantity}} ea @ {{innerBuy.Location}} (x{{innerBuy.Available}})
+                                        <li v-for="level2Buy in craft.Buys" :key="craft.RecipeId + level2Buy.Name">
+                                        Buy x{{level2Buy.Quantity}} {{level2Buy.Name}} for $\{{level2Buy.CostPerQuantity}} ea @ {{level2Buy.Location}} (x{{level2Buy.Available}})
                                         </li>
-                                        <li v-for="innerCraft in craft.Crafts" :key="craft.RecipeId + innerCraft.Name">
-                                        Craft x{{innerCraft.Quantity}} {{innerCraft.Name}}
+                                        <li v-for="level2Craft in craft.Crafts" :key="craft.RecipeId + level2Craft.Name">
+                                        Craft x{{level2Craft.Quantity}} {{level2Craft.Name}}
+                                            <ul>
+                                                <li v-for="level3Buy in level2Craft.Buys" :key="craft.RecipeId + level2Craft.RecipeId + level3Buy.Name">
+                                                Buy x{{level3Buy.Quantity}} {{level3Buy.Name}} for $\{{level3Buy.CostPerQuantity}} ea @ {{level3Buy.Location}} (x{{level3Buy.Available}})
+                                                </li>
+                                                <li v-for="level3Craft in level2Craft.Crafts" :key="craft.RecipeId + level2Craft.RecipeId + level3Craft.Name">
+                                                Craft x{{level3Craft.Quantity}} {{level3Craft.Name}}
+                                                    <ul>
+                                                        <li v-for="level4Buy in level3Craft.Buys" :key="craft.RecipeId + level2Craft.RecipeId + level3Craft.RecipeId + level4Buy.Name">
+                                                        Buy x{{level4Buy.Quantity}} {{level4Buy.Name}} for $\{{level4Buy.CostPerQuantity}} ea @ {{level4Buy.Location}} (x{{level4Buy.Available}})
+                                                        </li>
+                                                        <li v-for="level4Craft in level3Craft.Crafts" :key="craft.RecipeId + level2Craft.RecipeId + level3Craft.RecipeId + level4Craft.Name">
+                                                        Craft x{{level4Craft.Quantity}} {{level4Craft.Name}}
+                                                        </li>
+                                                    </ul>
+                                                </li>
+                                            </ul>
                                         </li>
                                     </ul>
                                 </li>

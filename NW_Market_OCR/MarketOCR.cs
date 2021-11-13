@@ -118,7 +118,7 @@ namespace NW_Market_OCR
         }
 
         private static DateTime lastDatabaseUploadTime = DateTime.MinValue;
-        private static TimeSpan databaseUploadDelay = TimeSpan.FromMinutes(30);
+        private static TimeSpan databaseUploadDelay = TimeSpan.FromSeconds(30);
         private static int databaseUploadItemThreshold = 18;
 
         private static int itemsAddedToDatabase = 0;
