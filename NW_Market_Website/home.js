@@ -8,6 +8,7 @@ export default {
             <b-tabs card>
                 <b-tab title="Listings" @click="loadMarketData">
                     <b-navbar toggleable="lg">
+                        <b-navbar-brand href="#">Search</b-navbar-brand>
                         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
                         <b-collapse id="nav-collapse" is-nav>
                             <b-navbar-nav>
@@ -34,6 +35,7 @@ export default {
                 </b-tab>
                 <b-tab title="Recipes" @click="loadRecipeSuggestions" active>
                     <b-navbar toggleable="lg">
+                        <b-navbar-brand href="#">Search</b-navbar-brand>
                         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
                         <b-collapse id="nav-collapse" is-nav>
