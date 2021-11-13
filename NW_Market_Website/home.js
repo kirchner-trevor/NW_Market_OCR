@@ -7,38 +7,49 @@ export default {
         <b-card no-body>
             <b-tabs card>
                 <b-tab title="Listings" @click="loadMarketData">
-                    <b-form-group
-                    >
-                        <b-input-group size="sm">
-                            <b-form-input
-                                id="filter-input"
-                                v-model="filter"
-                                type="search"
-                                placeholder="Type to Search"
-                                debounce="500"
-                            ></b-form-input>
+                    <b-row align-h="start">
+                        <b-col cols="2">
+                            <b-input-group>
+                                <b-form-input
+                                    id="filter-input"
+                                    v-model="filter"
+                                    type="search"
+                                    placeholder="Type to Search"
+                                    debounce="500"
+                                ></b-form-input>
 
-                            <b-input-group-append>
-                                <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
-                            </b-input-group-append>
-                        </b-input-group>
-                    </b-form-group>
+                                <b-input-group-append>
+                                    <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
+                                </b-input-group-append>
+                            </b-input-group>
+                        </b-col>
+                        <b-col>
+                        Updated <i>{{marketDataUpdated}}</i>
+                        </b-col>
+                    </b-row>
                     <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter"></b-table>
                 </b-tab>
                 <b-tab title="Recipes" @click="loadRecipeSuggestions" active>
-                    <b-row align-h="start">
-                        <b-col cols="2">
-                            <b-form-group label-for="tradeskill-filter" label="Tradeskill">
-                                <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions"></b-form-select>
-                            </b-form-group>
-                        </b-col>
-                            
-                        <b-col cols="2">
-                            <b-form-group label-for="level-filter" label="Level">
-                                <b-form-input id="level-filter" v-model="levelFilter" type="number"></b-form-input>
-                            </b-form-group>
-                        </b-col>
-                    </b-row>
+                    <b-input-group>
+                        <b-row align-h="start">
+                            <b-col>
+                                <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions">
+                                    <template #first>
+                                        <b-form-select-option :value="null">-- Any Tradeskill --</b-form-select-option>
+                                    </template>
+                                </b-form-select>
+                            </b-col>
+                                
+                            <b-col>
+                                <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Level"></b-form-input>
+                            </b-col>
+
+                            <b-col>
+                            Updated <i>{{recipeSuggestionsUpdated}}</i>
+                            </b-col>
+                        </b-row>
+                    </b-input-group>
+                    </br>
                     <b-card-group columns>
                         <b-card v-for="recipeSuggestion in filteredRecipeSuggestions" :key="recipeSuggestion.RecipeId">
                             <b-card-title>{{recipeSuggestion.Name}}</b-card-title>
@@ -86,10 +97,14 @@ export default {
         return {
             marketDataLoaded: false,
             marketData: {
+                Updated: null,
                 Listings: [],
             },
             recipeSuggestionsLoaded: false,
-            recipeSuggestions: [],
+            recipeSuggestions: {
+                Updated: null,
+                Suggestions: []
+            },
             listingFields: [
                 {
                     key: 'Name',
@@ -127,7 +142,6 @@ export default {
             ],
             tradeskillFilter: null,
             tradeskillOptions: [
-                '',
                 'Arcana',
                 'Armoring',
                 'Cooking',
@@ -186,9 +200,15 @@ export default {
     },
     computed: {
         filteredRecipeSuggestions() {
-            return this.recipeSuggestions
+            return this.recipeSuggestions.Suggestions
                 .filter(recipe => (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
                 .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
+        },
+        marketDataUpdated() {
+            return this.marketData.Updated ? moment(this.marketData.Updated).fromNow() : 'Never';
+        },
+        recipeSuggestionsUpdated() {
+            return this.recipeSuggestions.Updated ? moment(this.recipeSuggestions.Updated).fromNow() : 'Never';
         }
     }
 };

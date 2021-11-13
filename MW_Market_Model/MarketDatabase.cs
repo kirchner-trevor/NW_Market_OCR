@@ -26,6 +26,8 @@ namespace MW_Market_Model
 
         public List<MarketListing> Listings { get; set; } = new List<MarketListing>();
 
+        public DateTime Updated { get; set; }
+
         public MarketItemSummary GetItemSummary(string name, string location = default, DateTime onOrAfter = default)
         {
             List<IGrouping<string, MarketListing>> listingsForItem = Listings.Where(_ => _.Name == name)
@@ -68,6 +70,7 @@ namespace MW_Market_Model
 
         public void SaveDatabaseToDisk()
         {
+            Updated = DateTime.UtcNow;
             Console.WriteLine("Saving database to disk...");
             string json = JsonSerializer.Serialize(this, JSON_SERIALIZER_OPTIONS);
             File.WriteAllText(GetDataBasePathOnDisk(), json);

@@ -378,7 +378,7 @@ namespace NW_Market_Collector
         {
             Process process = Process
                 .GetProcesses()
-                .SingleOrDefault(x => x.MainWindowTitle.Contains("New World"));
+                .SingleOrDefault(x => x.MainWindowTitle.ToLowerInvariant().Equals("new world"));
 
             return process != null ? process.MainWindowHandle : IntPtr.Zero;
         }
