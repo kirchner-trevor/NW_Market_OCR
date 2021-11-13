@@ -7,49 +7,54 @@ export default {
         <b-card no-body>
             <b-tabs card>
                 <b-tab title="Listings" @click="loadMarketData">
-                    <b-row align-h="start">
-                        <b-col cols="2">
-                            <b-input-group>
-                                <b-form-input
-                                    id="filter-input"
-                                    v-model="filter"
-                                    type="search"
-                                    placeholder="Type to Search"
-                                    debounce="500"
-                                ></b-form-input>
+                    <b-navbar toggleable="lg">
+                        <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
+                        <b-collapse id="nav-collapse" is-nav>
+                            <b-navbar-nav>
+                                <b-input-group>
+                                    <b-form-input
+                                        id="filter-input"
+                                        v-model="filter"
+                                        type="search"
+                                        placeholder="Type to Search"
+                                        debounce="500"
+                                    ></b-form-input>
 
-                                <b-input-group-append>
-                                    <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
-                                </b-input-group-append>
-                            </b-input-group>
-                        </b-col>
-                        <b-col>
-                        Updated <i>{{marketDataUpdated}}</i>
-                        </b-col>
-                    </b-row>
+                                    <b-input-group-append>
+                                        <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
+                                    </b-input-group-append>
+                                </b-input-group>
+                            </b-navbar-nav>
+                            <b-navbar-nav class="ml-auto">
+                                <b-nav-text>Updated <em>{{marketDataUpdated}}</em></b-nav-text>
+                            </b-navbar-nav>
+                        </b-collapse>
+                    </b-navbar>
                     <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter"></b-table>
                 </b-tab>
                 <b-tab title="Recipes" @click="loadRecipeSuggestions" active>
-                    <b-input-group>
-                        <b-row align-h="start">
-                            <b-col>
-                                <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions">
-                                    <template #first>
-                                        <b-form-select-option :value="null">-- Any Tradeskill --</b-form-select-option>
-                                    </template>
-                                </b-form-select>
-                            </b-col>
-                                
-                            <b-col>
-                                <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Level"></b-form-input>
-                            </b-col>
+                    <b-navbar toggleable="lg">
+                        <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
-                            <b-col>
-                            Updated <i>{{recipeSuggestionsUpdated}}</i>
-                            </b-col>
-                        </b-row>
-                    </b-input-group>
-                    </br>
+                        <b-collapse id="nav-collapse" is-nav>
+                            <b-navbar-nav>
+                                <b-nav-form class="mr-sm-2">
+                                    <b-form-select id="tradeskill-filter" v-model="tradeskillFilter" :options="tradeskillOptions">
+                                        <template #first>
+                                            <b-form-select-option :value="null">Any Tradeskill</b-form-select-option>
+                                        </template>
+                                    </b-form-select>
+                                </b-nav-form>
+
+                                <b-nav-form>
+                                    <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Any Level"></b-form-input>
+                                </b-nav-form>
+                            </b-navbar-nav>
+                            <b-navbar-nav class="ml-auto">
+                                <b-nav-text>Updated <em>{{recipeSuggestionsUpdated}}</em></b-nav-text>
+                            </b-navbar-nav>
+                        </b-collapse>
+                    </b-navbar>
                     <b-card-group columns>
                         <b-card v-for="recipeSuggestion in filteredRecipeSuggestions" :key="recipeSuggestion.RecipeId">
                             <b-card-title>{{recipeSuggestion.Name}}</b-card-title>
