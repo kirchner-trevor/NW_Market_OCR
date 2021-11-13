@@ -2,7 +2,8 @@ export default {
     name: 'home',
     template: /*html*/`
     <b-container class="mt-3" fluid>
-        <b-jumbotron header="NW Market - Orofena" lead="View market listings and more to come!">
+        <b-jumbotron header="NW Market - Orofena" lead="View market listings, recipes, and more to come!">
+            <p>Interesting in contributing to the project? Download the market collector!</p>
             <b-button variant="primary" href="/NW_Market_Collector.zip" download>Download</b-button>
         </b-jumbotron>
         <b-card no-body>
