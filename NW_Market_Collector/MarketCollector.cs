@@ -29,6 +29,7 @@ namespace NW_Market_Collector
         private static Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
         private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
         private const string IMAGE_TEXT_CACHE_FILE_NAME = "imageTextCache.json";
+        private const string LOG_FILE_NAME = "log.txt";
         private static Rectangle DEFAULT_MARKET_AREA = new Rectangle { X = 696, Y = 326, Width = 1130, Height = 730 };
         private static Point DEFAULT_SCREEN_SIZE = new Point(1920, 1080);
         private static Rectangle MarketArea = DEFAULT_MARKET_AREA;
@@ -46,11 +47,14 @@ namespace NW_Market_Collector
             private int progress;
             public int Progress { get { return progress; } set { progress = value; Update(); } }
 
-            private int itemsInQueue;
-            public int ItemsInQueue { get { return itemsInQueue; } set { itemsInQueue = value; Update(); } }
+            private int totalItemsSeen;
+            public int TotalItemsSeen { get { return totalItemsSeen; } set { totalItemsSeen = value; Update(); } }
 
             private string latestTextBlob;
             public string LatestTextBlob { get { return latestTextBlob; } set { latestTextBlob = value; Update(); } }
+
+            private int totalItemsProcessed;
+            public int TotalItemsProcessed { get { return totalItemsProcessed; } set { totalItemsProcessed = value; Update(); } }
 
             private int step = 0;
 
@@ -69,7 +73,7 @@ namespace NW_Market_Collector
                     $"{Rotator()} Welcome to the NW Market Collector!\n\n" +
                     $"Collector Status: {collectorStatus}{new string(' ', 20)}\n" +
                     $"Processor Status: {processorStatus}{new string(' ', 20)}\n" +
-                    $"Items To Process: {itemsInQueue}{new string(' ', 4)}\n" +
+                    $"Items: {totalItemsProcessed} / {totalItemsSeen}{new string(' ', 4)}\n" +
                     $"Upload Progress: {progress}%{new string(' ', 4)}\n" +
                     $"Latest Text Blob: {latestTextBlob?.Substring(0, Math.Min(latestTextBlob?.Length ?? 0, 50))}...\n"
                 );
@@ -98,7 +102,7 @@ namespace NW_Market_Collector
 
         private static volatile ConsoleHUDWriter ConsoleHUD = new ConsoleHUDWriter
         {
-            ItemsInQueue = 0,
+            TotalItemsSeen = 0,
             Progress = 0,
             CollectorStatus = "Starting Up",
             ProcessorStatus = "Starting Up",
@@ -124,7 +128,7 @@ namespace NW_Market_Collector
 
         static async Task Main(string[] args)
         {
-            Trace.Listeners.Add(new TextWriterTraceListener("log.txt"));
+            Trace.Listeners.Add(new TextWriterTraceListener(LOG_FILE_NAME));
 
             Configuration = new ApplicationConfiguration();
 
@@ -139,11 +143,15 @@ namespace NW_Market_Collector
                 {
                     Configuration = JsonSerializer.Deserialize<ApplicationConfiguration>(File.ReadAllText("config.json"));
                 }
-                else
+
+                if (string.IsNullOrWhiteSpace(Configuration?.Credentials))
                 {
                     Console.Write("Credentials (e.g. xxxxx:yyyyyy): ");
                     Configuration.Credentials = Console.ReadLine();
+                }
 
+                if (string.IsNullOrWhiteSpace(Configuration?.User))
+                {
                     Console.Write("Username (Optional): ");
                     Configuration.User = Console.ReadLine();
                 }
@@ -182,8 +190,8 @@ namespace NW_Market_Collector
             catch (Exception e)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"NW Market Collector encountered an error and is shutting down. See 'error.txt' for details.");
-                File.WriteAllText("error.txt", e.Message);
+                Console.WriteLine($"NW Market Collector encountered an error and is shutting down. See '{LOG_FILE_NAME}' for details.");
+                File.AppendAllText(LOG_FILE_NAME, e.Message);
                 Console.ResetColor();
 
                 isRunning = false;
@@ -242,14 +250,15 @@ namespace NW_Market_Collector
                 DateTime startTime = DateTime.UtcNow;
 
                 IEnumerable<string> filesToProcess = Directory.EnumerateFiles(capturesDirectory, $"market_*.png");
-                ConsoleHUD.ItemsInQueue = filesToProcess.Count();
+                ConsoleHUD.TotalItemsSeen += filesToProcess.Count();
                 foreach (string filePath in filesToProcess)
                 {
+                    ConsoleHUD.Progress = 0;
                     await UploadNwMarketImage(filePath, s3Client, user);
                     Trace.WriteLine($"Removing market image...");
                     File.Delete(filePath);
-                    ConsoleHUD.ItemsInQueue--;
-                    ConsoleHUD.Progress = 0;
+                    ConsoleHUD.TotalItemsProcessed++;
+
                 }
 
                 ConsoleHUD.ProcessorStatus = "Waiting For More Files";
@@ -374,18 +383,9 @@ namespace NW_Market_Collector
             Thread.Sleep(timeToWait);
         }
 
-        private static IntPtr GetHandleOfNewWorldWindow()
-        {
-            Process process = Process
-                .GetProcesses()
-                .SingleOrDefault(x => x.MainWindowTitle.ToLowerInvariant().Equals("new world"));
-
-            return process != null ? process.MainWindowHandle : IntPtr.Zero;
-        }
-
         private static string SaveImageOfNewWorld()
         {
-            IntPtr newWorldWindow = GetHandleOfNewWorldWindow();
+            IntPtr newWorldWindow = WindowPrinterV2.GetHandleOfFocusedWindowWithName("New World");
             if (newWorldWindow != IntPtr.Zero)
             {
                 string path = Path.Combine(Directory.GetCurrentDirectory(), "captures");

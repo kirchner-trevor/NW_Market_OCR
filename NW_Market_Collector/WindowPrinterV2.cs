@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace NW_Market_Collector
@@ -24,6 +26,17 @@ namespace NW_Market_Collector
             return bmp;
         }
 
+        public static IntPtr GetHandleOfFocusedWindowWithName(string name)
+        {
+            Process process = Process
+                .GetProcesses()
+                .SingleOrDefault(x => x.MainWindowTitle.ToLowerInvariant().Equals(name.ToLowerInvariant()));
+
+            IntPtr focus = User32.GetForegroundWindow();
+
+            return process != null && process.MainWindowHandle == focus ? process.MainWindowHandle : IntPtr.Zero;
+        }
+
         private class User32
         {
             [StructLayout(LayoutKind.Sequential)]
@@ -37,6 +50,9 @@ namespace NW_Market_Collector
 
             [DllImport("user32.dll")]
             public static extern IntPtr GetWindowRect(IntPtr hWnd, ref Rect rect);
+
+            [DllImport("user32.dll")]
+            public static extern IntPtr GetForegroundWindow();
         }
     }
 }

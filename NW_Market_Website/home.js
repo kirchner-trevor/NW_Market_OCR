@@ -3,6 +3,7 @@ export default {
     template: /*html*/`
     <b-container class="mt-3" fluid>
         <b-jumbotron header="NW Market - Orofena" lead="View market listings and more to come!">
+            <b-button variant="primary" href="/NW_Market_Collector.zip" download>Download</b-button>
         </b-jumbotron>
         <b-card no-body>
             <b-tabs card>
