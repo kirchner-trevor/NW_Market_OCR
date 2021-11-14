@@ -2,7 +2,7 @@ Thank you for downloading NW Market Collector!
 
 = Getting started =
 
-To get started, simply run NW_Market_Collector.exe, and paste in the credentials string you were given.
+To get started, simply run NW_Market_Collector.exe, and paste in the credentials you were given.
 You can then optionally provider a user to help with troubleshooting.
 
 That's it! It will also save this information into the config.json file to use the next time.

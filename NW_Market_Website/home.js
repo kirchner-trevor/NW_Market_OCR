@@ -78,7 +78,7 @@ export default {
                                     </b-form-select>
                                 </b-nav-form>
 
-                                <b-nav-form>
+                                <b-nav-form @submit.stop.prevent>
                                     <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Any Level" debounce="500"></b-form-input>
                                 </b-nav-form>
                             </b-navbar-nav>

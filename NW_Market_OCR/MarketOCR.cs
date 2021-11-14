@@ -112,6 +112,8 @@ namespace NW_Market_OCR
                 }
                 else
                 {
+                    await TryUploadDatabaseRateLimited(s3Client, database);
+
                     Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
                     Thread.Sleep(TimeSpan.FromSeconds(30));
                 }
@@ -138,6 +140,7 @@ namespace NW_Market_OCR
                     FilePath = database.GetDataBasePathOnDisk(),
                 });
                 lastDatabaseUploadTime = DateTime.UtcNow;
+                itemsAddedToDatabase = 0;
             }
             else
             {
