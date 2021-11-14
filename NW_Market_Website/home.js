@@ -262,7 +262,7 @@ export default {
     computed: {
         filteredRecipeSuggestions() {
             return this.recipeSuggestions.Suggestions
-                .filter(recipe => (!this.filter || this.filter.split("\s").some(filterItem => recipe.Name.includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
+                .filter(recipe => (!this.filter || this.filter.toLowerCase().split("\s").some(filterItem => recipe.Name.toLowerCase().includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
                 .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
         },
         marketDataUpdated() {
