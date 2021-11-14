@@ -36,7 +36,7 @@ export default {
                             </b-navbar-nav>
                         </b-collapse>
                     </b-navbar>
-                    <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter" :busy="!marketDataLoaded && marketDataRequested">
+                    <b-table striped hover borderless :items="marketData.Listings" :fields="listingFields" :filter="filter" :busy="!marketDataLoaded && marketDataRequested" per-page="50">
                         <template #table-busy>
                             <div class="text-center my-2">
                                 <b-spinner class="align-middle"></b-spinner>
@@ -79,7 +79,7 @@ export default {
                                 </b-nav-form>
 
                                 <b-nav-form>
-                                    <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Any Level"></b-form-input>
+                                    <b-form-input id="level-filter" v-model="levelFilter" type="number" placeholder="Any Level" debounce="500"></b-form-input>
                                 </b-nav-form>
                             </b-navbar-nav>
                             <b-navbar-nav class="ml-auto">
