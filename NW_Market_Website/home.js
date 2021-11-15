@@ -146,6 +146,38 @@ export default {
                         </b-card>
                     </b-card-group>
                 </b-tab>
+                <b-tab title="Items" @click="loadItemTrendData" lazy>
+                    <template #title>
+                        Items <b-badge v-if="itemTrendDataLoaded">{{itemTrendData.Items.length}}</b-badge><b-spinner type="border" v-if="!itemTrendDataLoaded && itemTrendDataRequested" small></b-spinner>
+                    </template>
+                    <b-navbar toggleable="lg">
+                        <b-navbar-brand href="#">Search</b-navbar-brand>
+                        <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
+
+                        <b-collapse id="nav-collapse" is-nav>
+                            <b-navbar-nav class="ml-auto">
+                                <b-nav-text>Updated <em>{{itemTrendDataUpdated}}</em></b-nav-text>
+                            </b-navbar-nav>
+                        </b-collapse>
+                    </b-navbar>
+                    <b-card-group columns>
+                        <b-card v-if="!itemTrendDataLoaded && itemTrendDataRequested">
+                            <b-spinner class="align-middle"></b-spinner>
+                            <strong>Loading...</strong>
+                        </b-card>
+                        <b-card v-for="itemTrend in itemTrendData.Items" :key="itemTrend.Name">
+                            <b-card-title>{{itemTrend.Name}}</b-card-title>
+                            <b-card-text>
+                                Total Market: $\{{round(itemTrend.DailyStats[0].TotalMarket)}} <strong>({{round(itemTrend.DailyStats[1].TotalMarket - itemTrend.DailyStats[0].TotalMarket)}})</strong>
+                                </br>Min Price: $\{{round(itemTrend.DailyStats[0].MinPrice)}} <strong>({{round(itemTrend.DailyStats[1].MinPrice - itemTrend.DailyStats[0].MinPrice)}})</strong>
+                                </br>Avg Price: $\{{round(itemTrend.DailyStats[0].AveragePrice)}} <strong>({{round(itemTrend.DailyStats[1].AveragePrice - itemTrend.DailyStats[0].AveragePrice)}})</strong>
+                                </br>Max Price: $\{{round(itemTrend.DailyStats[0].MaxPrice)}} <strong>({{round(itemTrend.DailyStats[1].MaxPrice - itemTrend.DailyStats[0].MaxPrice)}})</strong>
+                                </br>Total Available: {{itemTrend.DailyStats[0].TotalAvailable}} <strong>({{round(itemTrend.DailyStats[1].TotalAvailable - itemTrend.DailyStats[0].TotalAvailable)}})</strong>
+                                </br>Total Available For Avg Price: {{itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage}} <strong>({{round(itemTrend.DailyStats[1].TotalAvailableBelowMarketAverage - itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage)}})</strong>
+                            </b-card-text>
+                        </b-card>
+                    </b-card-group>
+                </b-tab>
             </b-tabs>
         </b-card>
     </b-container>
@@ -163,6 +195,12 @@ export default {
             recipeSuggestions: {
                 Updated: null,
                 Suggestions: []
+            },
+            itemTrendDataRequested: false,
+            itemTrendDataLoaded: false,
+            itemTrendData: {
+                Updated: null,
+                Items: []
             },
             listingFields: [
                 {
@@ -239,6 +277,17 @@ export default {
                     });
             }
         },
+        loadItemTrendData() {
+            if (!this.itemTrendDataLoaded) {
+                this.itemTrendDataRequested = true;
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/itemTrendData.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.itemTrendData = data;
+                        this.itemTrendDataLoaded = true;
+                    });
+            }
+        },
         getHoursFromTimeSpan(timeSpan) {
             if (!timeSpan) {
                 return timeSpan;
@@ -257,12 +306,15 @@ export default {
             }
 
             return parseInt(parts[0]) * 24 + parseInt(smallParts[0]);
+        },
+        round(number) {
+            return Math.round(number * 100) / 100;
         }
     },
     computed: {
         filteredRecipeSuggestions() {
             return this.recipeSuggestions.Suggestions
-                .filter(recipe => (!this.filter || this.filter.toLowerCase().split("\s").some(filterItem => recipe.Name.toLowerCase().includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
+                .filter(recipe => (!this.filter || this.filter.toLowerCase().split(" ").every(filterItem => recipe.Name.toLowerCase().includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
                 .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
         },
         marketDataUpdated() {
@@ -270,6 +322,9 @@ export default {
         },
         recipeSuggestionsUpdated() {
             return this.recipeSuggestions.Updated ? moment(this.recipeSuggestions.Updated).fromNow() : 'Never';
+        },
+        itemTrendDataUpdated() {
+            return this.itemTrendData.Updated ? moment(this.itemTrendData.Updated).fromNow() : 'Never';
         }
     }
 };
