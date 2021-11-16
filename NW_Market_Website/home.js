@@ -155,6 +155,21 @@ export default {
                         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
                         <b-collapse id="nav-collapse" is-nav>
+                            <b-navbar-nav>
+                                <b-input-group class="mr-sm-2">
+                                    <b-form-input
+                                        id="filter-input"
+                                        v-model="filter"
+                                        type="search"
+                                        placeholder="Type to Search"
+                                        debounce="500"
+                                    ></b-form-input>
+
+                                    <b-input-group-append>
+                                        <b-button :disabled="!filter" @click="filter = ''">Clear</b-button>
+                                    </b-input-group-append>
+                                </b-input-group>
+                            </b-navbar-nav>
                             <b-navbar-nav class="ml-auto">
                                 <b-nav-text>Updated <em>{{itemTrendDataUpdated}}</em></b-nav-text>
                             </b-navbar-nav>
@@ -165,16 +180,25 @@ export default {
                             <b-spinner class="align-middle"></b-spinner>
                             <strong>Loading...</strong>
                         </b-card>
-                        <b-card v-for="itemTrend in itemTrendData.Items" :key="itemTrend.Name">
-                            <b-card-title>{{itemTrend.Name}}</b-card-title>
-                            <b-card-text>
-                                Total Market: $\{{round(itemTrend.DailyStats[0].TotalMarket)}} <strong>({{round(itemTrend.DailyStats[1].TotalMarket - itemTrend.DailyStats[0].TotalMarket)}})</strong>
-                                </br>Min Price: $\{{round(itemTrend.DailyStats[0].MinPrice)}} <strong>({{round(itemTrend.DailyStats[1].MinPrice - itemTrend.DailyStats[0].MinPrice)}})</strong>
-                                </br>Avg Price: $\{{round(itemTrend.DailyStats[0].AveragePrice)}} <strong>({{round(itemTrend.DailyStats[1].AveragePrice - itemTrend.DailyStats[0].AveragePrice)}})</strong>
-                                </br>Max Price: $\{{round(itemTrend.DailyStats[0].MaxPrice)}} <strong>({{round(itemTrend.DailyStats[1].MaxPrice - itemTrend.DailyStats[0].MaxPrice)}})</strong>
-                                </br>Total Available: {{itemTrend.DailyStats[0].TotalAvailable}} <strong>({{round(itemTrend.DailyStats[1].TotalAvailable - itemTrend.DailyStats[0].TotalAvailable)}})</strong>
-                                </br>Total Available For Avg Price: {{itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage}} <strong>({{round(itemTrend.DailyStats[1].TotalAvailableBelowMarketAverage - itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage)}})</strong>
-                            </b-card-text>
+                        <b-card v-for="itemTrend in filteredItemTrendDatas" :key="itemTrend.Name" no-body>
+                            <b-card-body>
+                                <b-card-title>{{itemTrend.Name}}</b-card-title>
+                                <b-card-text>
+                                    Total Market: $\{{round(itemTrend.DailyStats[0].TotalMarket)}} <strong>({{round(itemTrend.DailyStats[0].TotalMarket - itemTrend.DailyStats[1].TotalMarket)}})</strong>
+                                    </br>Min Price: $\{{round(itemTrend.DailyStats[0].MinPrice)}} <strong>({{round(itemTrend.DailyStats[0].MinPrice - itemTrend.DailyStats[1].MinPrice)}})</strong>
+                                    </br>Avg Price: $\{{round(itemTrend.DailyStats[0].AveragePrice)}} <strong>({{round(itemTrend.DailyStats[0].AveragePrice - itemTrend.DailyStats[1].AveragePrice)}})</strong>
+                                    </br>Max Price: $\{{round(itemTrend.DailyStats[0].MaxPrice)}} <strong>({{round(itemTrend.DailyStats[0].MaxPrice - itemTrend.DailyStats[1].MaxPrice)}})</strong>
+                                    </br>Total Available: {{itemTrend.DailyStats[0].TotalAvailable}} <strong>({{round(itemTrend.DailyStats[0].TotalAvailable - itemTrend.DailyStats[1].TotalAvailable)}})</strong>
+                                    </br>Total Available For Avg Price: {{itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage}} <strong>({{round(itemTrend.DailyStats[0].TotalAvailableBelowMarketAverage - itemTrend.DailyStats[1].TotalAvailableBelowMarketAverage)}})</strong>
+                                </b-card-text>
+                            </b-card-body>
+                            <b-tabs pills card end>
+                                <b-tab title="Average" active><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.AveragePrice).reverse()" smooth></trend></b-tab>
+                                <b-tab title="Min"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.MinPrice).reverse()" smooth></trend></b-tab>
+                                <b-tab title="Max"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.MaxPrice).reverse()" smooth></trend></b-tab>
+                                <b-tab title="Available"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.TotalAvailable).reverse()" smooth></trend></b-tab>
+                                <b-tab title="Market"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.TotalMarket).reverse()" smooth></trend></b-tab>
+                            </b-tabs>
                         </b-card>
                     </b-card-group>
                 </b-tab>
@@ -315,7 +339,14 @@ export default {
         filteredRecipeSuggestions() {
             return this.recipeSuggestions.Suggestions
                 .filter(recipe => (!this.filter || this.filter.toLowerCase().split(" ").every(filterItem => recipe.Name.toLowerCase().includes(filterItem))) && (!this.tradeskillFilter || recipe.Tradeskill === this.tradeskillFilter) && (!this.levelFilter || recipe.LevelRequirement <= this.levelFilter))
-                .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1);
+                .sort((a, b) => (a.ExperienceEfficienyForPrimaryTradekill < b.ExperienceEfficienyForPrimaryTradekill) ? 1 : -1)
+                .slice(0, 50);
+        },
+        filteredItemTrendDatas() {
+            return this.itemTrendData.Items
+                .filter(recipe => (!this.filter || this.filter.toLowerCase().split(" ").every(filterItem => recipe.Name.toLowerCase().includes(filterItem))))
+                .sort((a, b) => (a.Name > b.Name) ? 1 : -1)
+                .slice(0, 50);
         },
         marketDataUpdated() {
             return this.marketData.Updated ? moment(this.marketData.Updated).fromNow() : 'Never';
