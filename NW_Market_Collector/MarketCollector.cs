@@ -189,7 +189,7 @@ namespace NW_Market_Collector
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(Configuration.Server) || !configurationDatabase.ServerList.Contains(Configuration.Server))
+            if (string.IsNullOrWhiteSpace(Configuration.Server) || !configurationDatabase.Content.ServerList.Select(_ => _.Id).Contains(Configuration.Server))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Server '{Configuration.Server}' not found! You must provide a valid server to use this application.");

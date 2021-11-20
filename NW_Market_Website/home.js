@@ -8,10 +8,22 @@ export default {
 
             <b-collapse id="nav-collapse" is-nav>
                 <b-navbar-nav>
-                    <b-nav-text><strong>Server</strong></b-nav-text>
-                    <b-nav-item-dropdown :text="selectedServer">
-                        <b-dropdown-item v-for="serverChoice in serverList" :key="serverChoice" :href="'#/' + serverChoice" @click="changeServer(serverChoice)">{{serverChoice}}</b-dropdown-item>
-                    </b-nav-item-dropdown>
+                    <b-nav-text class="mr-sm-2"><strong>Server</strong></b-nav-text>
+                    <b-navbar-nav>
+                        <b-input-group>
+                            <b-form-input
+                                type="search"
+                                placeholder="Find Server"
+                                list="server-list"
+                                debounce="500"
+                                :value="selectedServerId"
+                                @change="changeServer"
+                            ></b-form-input>
+                        </b-input-group>
+                    </b-navbar-nav>
+                    <datalist id="server-list">
+                        <option v-for="serverChoice in configurationData.ServerList" :key="serverChoice.Id" :value="serverChoice.Id" :disabled="!serverChoice.Listings" :selected="selectedServerId === serverChoice.Id">{{serverChoice.Name}}</option>
+                    </datalist>
                 </b-navbar-nav>
             </b-collapse>
         </b-navbar>
@@ -224,7 +236,7 @@ export default {
     `,
     data() {
         return {
-            selectedServer: null,
+            selectedServerId: null,
             tabIndex: 1,
             marketDataRequested: false,
             marketDataLoaded: false,
@@ -243,6 +255,12 @@ export default {
             itemTrendData: {
                 Updated: null,
                 Items: []
+            },
+            configurationDataRequested: false,
+            configurationDataLoaded: false,
+            configurationData: {
+                Updated: null,
+                ServerList: []
             },
             listingFields: [
                 {
@@ -290,15 +308,12 @@ export default {
                 'Weaponsmithing',
             ],
             levelFilter: null,
-            filter: null,
-            serverList: [
-                'Orofena',
-                'Olympus'
-            ]
+            filter: null
         };
     },
     mounted() {
-        this.selectedServer = this.server;
+        this.loadConfigurationData();
+        this.selectedServerId = this.server;
         this.loadRecipeSuggestions();
         this.tabIndex = 1;
     },
@@ -312,7 +327,7 @@ export default {
         loadMarketData() {
             if (!this.marketDataLoaded) {
                 this.marketDataRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/database.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServerId + "/database.json")
                     .then(response => response.json())
                     .then(data => {
                         this.marketData = data;
@@ -323,7 +338,7 @@ export default {
         loadRecipeSuggestions() {
             if (!this.recipeSuggestionsLoaded) {
                 this.recipeSuggestionsRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/recipeSuggestions.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServerId + "/recipeSuggestions.json")
                     .then(response => response.json())
                     .then(data => {
                         this.recipeSuggestions = data;
@@ -334,11 +349,22 @@ export default {
         loadItemTrendData() {
             if (!this.itemTrendDataLoaded) {
                 this.itemTrendDataRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/itemTrendData.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServerId + "/itemTrendData.json")
                     .then(response => response.json())
                     .then(data => {
                         this.itemTrendData = data;
                         this.itemTrendDataLoaded = true;
+                    });
+            }
+        },
+        loadConfigurationData() {
+            if (!this.configurationDataLoaded) {
+                this.configurationDataRequested = true;
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/configurationData.json")
+                    .then(response => response.json())
+                    .then(data => {
+                        this.configurationData = data;
+                        this.configurationDataLoaded = true;
                     });
             }
         },
@@ -365,9 +391,9 @@ export default {
             return Math.round(number * 100) / 100;
         },
         changeServer(server) {
-            if (this.selectedServer !== server)
+            if (this.selectedServerId !== server && this.configurationData.ServerList.some(validServer => validServer.Id === server))
             {
-                this.selectedServer = server;
+                this.selectedServerId = server;
 
                 this.marketDataRequested = false;
                 this.marketDataLoaded = false;
@@ -390,6 +416,7 @@ export default {
                     Items: []
                 };
 
+                this.$router.push('/' + this.selectedServerId + '/');
                 this.loadRecipeSuggestions();
                 this.tabIndex = 1;
             }
@@ -416,6 +443,17 @@ export default {
         },
         itemTrendDataUpdated() {
             return this.itemTrendData.Updated ? moment(this.itemTrendData.Updated).fromNow() : 'Never';
+        },
+        selectedServer() {
+            let foundServer;
+            if (this.configurationData.ServerList)
+            {
+                foundServer = this.configurationData.ServerList.find(server => server.Id === this.selectedServerId);
+            }
+            if (!foundServer) {
+                foundServer = {};
+            }
+            return foundServer;
         }
     }
 };

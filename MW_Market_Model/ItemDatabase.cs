@@ -33,6 +33,7 @@ namespace MW_Market_Model
         public void LoadDatabaseFromDisk()
         {
             Console.WriteLine($"Loading {DATABASE_FILE_NAME} from disk...");
+            Contents = null;
             if (File.Exists(GetDataBasePathOnDisk()))
             {
                 string json = File.ReadAllText(GetDataBasePathOnDisk());

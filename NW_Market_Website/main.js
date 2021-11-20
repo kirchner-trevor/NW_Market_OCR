@@ -3,7 +3,7 @@ import Home from './home.js'
 import NotFound from './not-found.js'
 
 const routes = [
-  { path: '/', redirect: '/Orofena/' },
+  { path: '/', redirect: '/orofena/' },
   { path: '/:server/', component: Home, props: true },
   { path: '*', component: NotFound }
 ]

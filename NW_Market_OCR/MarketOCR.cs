@@ -22,6 +22,7 @@ namespace NW_Market_OCR
         private const int MAX_AUTOCORRECT_DISTANCE = 5;
         private const string OCR_KIND_DECIMALS = "decimals";
         private const string OCR_KIND_LETTERS = "letters";
+        private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
 
         // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
@@ -53,15 +54,15 @@ namespace NW_Market_OCR
             };
 
             Console.WriteLine($"Loading item database...");
-            itemsDatabase = await new NwdbInfoApiClient(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data").ListItemsAsync();
+            itemsDatabase = await new NwdbInfoApiClient(DATA_DIRECTORY).ListItemsAsync();
             itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
 
             Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
-            MarketDatabase database = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
+            MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
 
-            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase();
+            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
 
             //MarketDatabase cleanedDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
             //foreach (MarketListing marketListing in database.Listings)
@@ -79,9 +80,9 @@ namespace NW_Market_OCR
 
             while (true)
             {
-                foreach (string server in configurationDatabase.ServerList)
+                foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
                 {
-                    database.SetServer(server);
+                    database.SetServer(server.Id);
                     database.LoadDatabaseFromDisk();
 
                     Console.WriteLine($"Searching s3 for images...");
@@ -108,7 +109,7 @@ namespace NW_Market_OCR
 
                             UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
-                            await TryUploadDatabaseRateLimited(s3Client, database, server);
+                            await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
 
                             await s3Client.DeleteObjectAsync(new DeleteObjectRequest
                             {
@@ -119,7 +120,7 @@ namespace NW_Market_OCR
                     }
                     else
                     {
-                        await TryUploadDatabaseRateLimited(s3Client, database, server);
+                        await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
 
                         Console.WriteLine($"Found no objects in bucket for {server}...");
                     }
