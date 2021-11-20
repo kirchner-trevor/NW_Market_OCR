@@ -10,6 +10,8 @@ namespace MW_Market_Model
     public class MarketDatabase
     {
         private const string DATABASE_FILE_NAME = "database.json";
+        private const string DATABASE_EXPIRED_FILE_NAME = "databaseExpired.json";
+
         private static readonly JsonSerializerOptions JSON_SERIALIZER_OPTIONS = new JsonSerializerOptions
         {
             Converters = { new TimeSpanJsonConverter(), }
@@ -73,20 +75,48 @@ namespace MW_Market_Model
         public void SaveDatabaseToDisk()
         {
             Updated = DateTime.UtcNow;
-            Console.WriteLine("Saving database to disk...");
-            string json = JsonSerializer.Serialize(this, JSON_SERIALIZER_OPTIONS);
-            File.WriteAllText(GetDataBasePathOnDisk(), json);
+
+            Console.WriteLine("Saving fresh database to disk...");
+            MarketDatabase freshDatabase = new MarketDatabase
+            {
+                Listings = this.Listings.Where(_ => _.IsFresh()).ToList(),
+                Updated = this.Updated,
+            };
+            string freshJson = JsonSerializer.Serialize(freshDatabase, JSON_SERIALIZER_OPTIONS);
+            Directory.CreateDirectory(Path.GetDirectoryName(GetDatabasePathOnDisk()));
+            File.WriteAllText(GetDatabasePathOnDisk(), freshJson);
+
+            Console.WriteLine("Saving expired database to disk...");
+            MarketDatabase expiredDatabase = new MarketDatabase
+            {
+                Listings = this.Listings.Where(_ => !_.IsFresh()).ToList(),
+                Updated = this.Updated,
+            };
+            string expiredJson = JsonSerializer.Serialize(expiredDatabase, JSON_SERIALIZER_OPTIONS);
+            Directory.CreateDirectory(Path.GetDirectoryName(GetDatabaseExpiredPathOnDisk()));
+            File.WriteAllText(GetDatabaseExpiredPathOnDisk(), expiredJson);
         }
 
         public void LoadDatabaseFromDisk()
         {
-            Console.WriteLine("Loading database from disk...");
-            if (File.Exists(GetDataBasePathOnDisk()))
+            Listings = new List<MarketListing>();
+
+            Console.WriteLine("Loading fresh database from disk...");
+            if (File.Exists(GetDatabasePathOnDisk()))
             {
-                string json = File.ReadAllText(GetDataBasePathOnDisk());
-                MarketDatabase loadedDatabase = JsonSerializer.Deserialize<MarketDatabase>(json, JSON_SERIALIZER_OPTIONS);
-                Listings = loadedDatabase.Listings;
-                Updated = loadedDatabase.Updated;
+                string freshJson = File.ReadAllText(GetDatabasePathOnDisk());
+                MarketDatabase freshDatabase = JsonSerializer.Deserialize<MarketDatabase>(freshJson, JSON_SERIALIZER_OPTIONS);
+                Listings.AddRange(freshDatabase.Listings);
+                Updated = freshDatabase.Updated;
+            }
+
+            Console.WriteLine("Loading expired database from disk...");
+            if (File.Exists(GetDatabaseExpiredPathOnDisk()))
+            {
+                string expiredJson = File.ReadAllText(GetDatabaseExpiredPathOnDisk());
+                MarketDatabase expiredDatabase = JsonSerializer.Deserialize<MarketDatabase>(expiredJson, JSON_SERIALIZER_OPTIONS);
+                Listings.AddRange(expiredDatabase.Listings);
+                Updated = expiredDatabase.Updated;
             }
         }
 
@@ -95,9 +125,14 @@ namespace MW_Market_Model
             Server = server;
         }
 
-        public string GetDataBasePathOnDisk()
+        public string GetDatabasePathOnDisk()
         {
             return Path.Combine(DataDirectory, Server, DATABASE_FILE_NAME);
+        }
+
+        public string GetDatabaseExpiredPathOnDisk()
+        {
+            return Path.Combine(DataDirectory, Server, DATABASE_EXPIRED_FILE_NAME);
         }
     }
 

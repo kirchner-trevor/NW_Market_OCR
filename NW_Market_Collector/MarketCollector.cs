@@ -3,6 +3,7 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Fastenshtein;
+using MW_Market_Model;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -86,7 +87,7 @@ namespace NW_Market_Collector
 
             private string Rotator()
             {
-                switch(step)
+                switch (step)
                 {
                     case 0:
                         return "|";
@@ -132,10 +133,10 @@ namespace NW_Market_Collector
             }
         }
 
-        private static readonly string[] SERVER_LIST = new[] { "orofena" };
-
         static async Task Main(string[] args)
         {
+            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase();
+
             Trace.Listeners.Add(new TextWriterTraceListener(LOG_FILE_NAME));
 
             Configuration = new ApplicationConfiguration();
@@ -188,7 +189,7 @@ namespace NW_Market_Collector
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(Configuration.Server) || !SERVER_LIST.Contains(Configuration.Server))
+            if (string.IsNullOrWhiteSpace(Configuration.Server) || !configurationDatabase.ServerList.Contains(Configuration.Server))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Server '{Configuration.Server}' not found! You must provide a valid server to use this application.");

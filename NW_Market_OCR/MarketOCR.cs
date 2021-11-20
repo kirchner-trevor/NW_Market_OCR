@@ -38,8 +38,6 @@ namespace NW_Market_OCR
             new ManualAutocorrect("Wyrdwood", 3, new[] { "Wymv", "WMwood" }),
         };
 
-        private static readonly string[] SERVER_LIST = new[] { "orofena" };
-
         [STAThread]
         static async Task Main(string[] args)
         {
@@ -63,6 +61,8 @@ namespace NW_Market_OCR
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
 
+            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase();
+
             //MarketDatabase cleanedDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
             //foreach (MarketListing marketListing in database.Listings)
             //{
@@ -79,7 +79,7 @@ namespace NW_Market_OCR
 
             while (true)
             {
-                foreach (string server in SERVER_LIST)
+                foreach (string server in configurationDatabase.ServerList)
                 {
                     database.SetServer(server);
                     database.LoadDatabaseFromDisk();
@@ -121,31 +121,32 @@ namespace NW_Market_OCR
                     {
                         await TryUploadDatabaseRateLimited(s3Client, database, server);
 
-                        Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
-                        Thread.Sleep(TimeSpan.FromSeconds(30));
+                        Console.WriteLine($"Found no objects in bucket for {server}...");
                     }
                 }
+
+                Console.WriteLine($"Sleeping for 30 seconds...");
+                Thread.Sleep(TimeSpan.FromSeconds(30));
             }
         }
 
         private static DateTime lastDatabaseUploadTime = DateTime.MinValue;
         private static TimeSpan databaseUploadDelay = TimeSpan.FromSeconds(30);
+        private static TimeSpan maxDatabaseUploadDelay = TimeSpan.FromMinutes(30);
         private static int databaseUploadItemThreshold = 18;
 
         private static int itemsAddedToDatabase = 0;
 
         public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database, string server)
         {
-            // TODO : Clean database listings for sharing (remove unused data, etc)
-
             TimeSpan timeSinceLastUpload = DateTime.UtcNow - lastDatabaseUploadTime;
-            if (itemsAddedToDatabase >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay)
+            if ((itemsAddedToDatabase >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay) || (itemsAddedToDatabase > 0 && timeSinceLastUpload > maxDatabaseUploadDelay))
             {
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
                     BucketName = "nwmarketdata",
                     Key = server + "/database.json",
-                    FilePath = database.GetDataBasePathOnDisk(),
+                    FilePath = database.GetDatabasePathOnDisk(),
                 });
                 lastDatabaseUploadTime = DateTime.UtcNow;
                 itemsAddedToDatabase = 0;

@@ -291,7 +291,8 @@ export default {
             levelFilter: null,
             filter: null,
             serverList: [
-                'Orofena'
+                'Orofena',
+                'Olympus'
             ]
         };
     },

@@ -1,7 +1,6 @@
 ﻿using Amazon;
 using Amazon.S3;
 using MW_Market_Model;
-using NwdbInfoApi;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,6 @@ namespace NW_Market_Tools
     class MarketTools
     {
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
-        private static readonly string[] SERVER_LIST = new[] { "orofena" };
 
         static async Task Main(string[] args)
         {
@@ -23,6 +21,7 @@ namespace NW_Market_Tools
             MarketDatabase marketDatabase = new MarketDatabase(DATA_DIRECTORY);
             ItemDatabase itemDatabase = new ItemDatabase(DATA_DIRECTORY);
             AmazonS3Client s3Client = new AmazonS3Client(accessKeyId, secretAccessKey, RegionEndpoint.USEast2);
+            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase();
 
             IMarketTool[] tools = new IMarketTool[]
             {
@@ -35,7 +34,7 @@ namespace NW_Market_Tools
             {
                 startTime = DateTime.UtcNow;
 
-                foreach (string server in SERVER_LIST)
+                foreach (string server in configurationDatabase.ServerList)
                 {
                     foreach (IMarketTool tool in tools)
                     {
