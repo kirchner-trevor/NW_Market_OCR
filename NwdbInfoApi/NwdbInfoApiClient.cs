@@ -43,45 +43,7 @@ namespace NwdbInfoApi
                 return LoadFromJson<List<T>>(cacheFile);
             }
 
-            List<T> pages = new List<T>();
-            using (HttpClient httpClient = new HttpClient())
-            {
-                int pageCount = 1;
-
-                for (int page = 1; page <= pageCount; page++)
-                {
-                    Console.WriteLine($"Fetching page {page}...");
-                    ApiResponse<List<T>> content = await GetResource<List<T>>(httpClient, $"https://nwdb.info/db/{resource}/page/{page}.json");
-
-                    if (content.Success)
-                    {
-                        pages.AddRange(content.Data);
-                        pageCount = content.PageCount.Value;
-                        Console.WriteLine($"Added page to collection...");
-                    }
-                }
-            }
-
-            SaveAsJson(cacheFile, pages);
-
-            return pages;
-        }
-
-        private async Task<ApiResponse<T>> GetResource<T>(HttpClient httpClient, string url)
-        {
-            HttpResponseMessage response = await httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Get, url));
-
-            if (response.IsSuccessStatusCode)
-            {
-                string contentString = await response.Content.ReadAsStringAsync();
-                ApiResponse<T> content = JsonSerializer.Deserialize<ApiResponse<T>>(contentString, NWDB_JSON_SERIALIZER_OPTIONS);
-                return content;
-            }
-            else
-            {
-                Console.WriteLine($"Error fetching resource '{url}'... (${response.StatusCode}: {response.ReasonPhrase})");
-                return default;
-            }
+            return new List<T>();
         }
 
         // TODO : List Detailed Items (need info on containersWithItem to get salvaging data, need "IngredientCategories" to bucket generic items like "Refining Materials Tier 3" for buying categories of items)
@@ -93,29 +55,7 @@ namespace NwdbInfoApi
                 return LoadFromJson<List<RecipeData>>(RECIPE_DETAILS_CACHE_FILE_NAME);
             }
 
-            List<RecipesPageData> recipes = await ListRecipesAsync();
-
-            List<RecipeData> pages = new List<RecipeData>();
-            using (HttpClient httpClient = new HttpClient())
-            {
-                int count = 0;
-                foreach (RecipesPageData recipe in recipes)
-                {
-                    ApiResponse<RecipeData> content = await GetResource<RecipeData>(httpClient, $"https://nwdb.info/db/recipe/{recipe.Id}.json");
-
-                    if (content.Success)
-                    {
-                        pages.Add(content.Data);
-
-                        count++;
-                        Console.Write($"\rAdded Item {count}/{recipes.Count}                    ");
-                    }
-                }
-            }
-
-            SaveAsJson(RECIPE_DETAILS_CACHE_FILE_NAME, pages);
-
-            return pages;
+            return new List<RecipeData>();
         }
 
         private bool IsCached(string fileName)
