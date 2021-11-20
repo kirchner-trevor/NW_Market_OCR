@@ -4,6 +4,6 @@ namespace NW_Market_Tools
 {
     public interface IMarketTool
     {
-        Task Run();
+        Task Run(string server);
     }
 }

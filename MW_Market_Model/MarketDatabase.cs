@@ -16,6 +16,7 @@ namespace MW_Market_Model
         };
 
         private string DataDirectory;
+        private string Server = "default";
 
         public MarketDatabase() : this(null) { }
 
@@ -89,9 +90,14 @@ namespace MW_Market_Model
             }
         }
 
+        public void SetServer(string server)
+        {
+            Server = server;
+        }
+
         public string GetDataBasePathOnDisk()
         {
-            return Path.Combine(DataDirectory, DATABASE_FILE_NAME); ;
+            return Path.Combine(DataDirectory, Server, DATABASE_FILE_NAME);
         }
     }
 

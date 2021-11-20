@@ -2,8 +2,9 @@ Thank you for downloading NW Market Collector!
 
 = Getting started =
 
-To get started, simply run NW_Market_Collector.exe, and paste in the credentials you were given.
-You can then optionally provider a user to help with troubleshooting.
+First, create a new issue on https://github.com/kirchner-trevor/NW_Market_OCR/issues and label it "access request" to get credentials.
+Then, simply run NW_Market_Collector.exe, and paste in the credentials you were given.
+You can then optionally provide a user to help with troubleshooting.
 
 That's it! It will also save this information into the config.json file to use the next time.
 

@@ -56,6 +56,10 @@ namespace NW_Market_Collector
             private int totalItemsProcessed;
             public int TotalItemsProcessed { get { return totalItemsProcessed; } set { totalItemsProcessed = value; Update(); } }
 
+
+            private string server;
+            public string Server { get { return server; } set { server = value; Update(); } }
+
             private int step = 0;
 
             private void Update()
@@ -70,7 +74,7 @@ namespace NW_Market_Collector
                 }
 
                 Console.Write(
-                    $"{Rotator()} Welcome to the NW Market Collector!\n\n" +
+                    $"{Rotator()} NW Market Collector - {server} {Rotator()}\n\n" +
                     $"Collector Status: {collectorStatus}{new string(' ', 20)}\n" +
                     $"Processor Status: {processorStatus}{new string(' ', 20)}\n" +
                     $"Items: {totalItemsProcessed} / {totalItemsSeen}{new string(' ', 4)}\n" +
@@ -103,6 +107,7 @@ namespace NW_Market_Collector
         private static volatile ConsoleHUDWriter ConsoleHUD = new ConsoleHUDWriter
         {
             TotalItemsSeen = 0,
+            TotalItemsProcessed = 0,
             Progress = 0,
             CollectorStatus = "Starting Up",
             ProcessorStatus = "Starting Up",
@@ -114,6 +119,7 @@ namespace NW_Market_Collector
         private class ApplicationConfiguration
         {
             public string Credentials { get; set; }
+            public string Server { get; set; }
             public string User { get; set; }
             public ConfigurationRectangle CustomMarketArea { get; set; }
 
@@ -126,6 +132,8 @@ namespace NW_Market_Collector
             }
         }
 
+        private static readonly string[] SERVER_LIST = new[] { "orofena" };
+
         static async Task Main(string[] args)
         {
             Trace.Listeners.Add(new TextWriterTraceListener(LOG_FILE_NAME));
@@ -133,7 +141,8 @@ namespace NW_Market_Collector
             Configuration = new ApplicationConfiguration();
 
             Configuration.Credentials = args.Length >= 1 ? args[0] : null;
-            Configuration.User = args.Length >= 2 ? args[1] : null;
+            Configuration.Server = args.Length >= 2 ? args[1] : null;
+            Configuration.User = args.Length >= 3 ? args[2] : null;
 
             Console.WriteLine("Welcome to the NW Market Collector!\n");
 
@@ -150,6 +159,12 @@ namespace NW_Market_Collector
                     Configuration.Credentials = Console.ReadLine();
                 }
 
+                if (string.IsNullOrWhiteSpace(Configuration?.Server))
+                {
+                    Console.Write("Server (Required): ");
+                    Configuration.Server = Console.ReadLine();
+                }
+
                 if (string.IsNullOrWhiteSpace(Configuration?.User))
                 {
                     Console.Write("Username (Optional): ");
@@ -161,10 +176,22 @@ namespace NW_Market_Collector
             string accessKeyId = credentialPieces[0];
             string secretAccessKey = credentialPieces[1];
 
+            Configuration.Server = Configuration.Server?.ToLowerInvariant();
+
             if (accessKeyId == null || secretAccessKey == null)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Credentials not found! You must provide credentials to use this application.");
+                Console.ResetColor();
+                Console.Write("Press enter to exit");
+                Console.ReadLine();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Configuration.Server) || !SERVER_LIST.Contains(Configuration.Server))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Server '{Configuration.Server}' not found! You must provide a valid server to use this application.");
                 Console.ResetColor();
                 Console.Write("Press enter to exit");
                 Console.ReadLine();
@@ -176,7 +203,7 @@ namespace NW_Market_Collector
                 WriteIndented = true,
             }));
 
-            Thread processThread = new Thread(async () => await ProcessMarketImagesForever(accessKeyId, secretAccessKey, Configuration.User));
+            Thread processThread = new Thread(async () => await ProcessMarketImagesForever(accessKeyId, secretAccessKey, Configuration));
 
             try
             {
@@ -238,27 +265,28 @@ namespace NW_Market_Collector
             }
         }
 
-        private static async Task ProcessMarketImagesForever(string accessKeyId, string secretAccessKey, string user)
+        private static async Task ProcessMarketImagesForever(string accessKeyId, string secretAccessKey, ApplicationConfiguration configuration)
         {
             AmazonS3Client s3Client = new AmazonS3Client(accessKeyId, secretAccessKey, RegionEndpoint.USEast2);
 
             string capturesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "captures");
             Directory.CreateDirectory(capturesDirectory);
 
+            ConsoleHUD.Server = configuration.Server;
+
             while (isRunning)
             {
                 DateTime startTime = DateTime.UtcNow;
 
-                IEnumerable<string> filesToProcess = Directory.EnumerateFiles(capturesDirectory, $"market_*.png");
-                ConsoleHUD.TotalItemsSeen += filesToProcess.Count();
+                List<string> filesToProcess = Directory.GetFiles(capturesDirectory, $"market_*.png").ToList();
+                ConsoleHUD.TotalItemsSeen += filesToProcess.Count;
                 foreach (string filePath in filesToProcess)
                 {
                     ConsoleHUD.Progress = 0;
-                    await UploadNwMarketImage(filePath, s3Client, user);
+                    await UploadNwMarketImage(filePath, s3Client, configuration);
                     Trace.WriteLine($"Removing market image...");
                     File.Delete(filePath);
                     ConsoleHUD.TotalItemsProcessed++;
-
                 }
 
                 ConsoleHUD.ProcessorStatus = "Waiting For More Files";
@@ -267,7 +295,7 @@ namespace NW_Market_Collector
             }
         }
 
-        private static async Task UploadNwMarketImage(string path, AmazonS3Client s3Client, string user)
+        private static async Task UploadNwMarketImage(string path, AmazonS3Client s3Client, ApplicationConfiguration configuration)
         {
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
@@ -282,12 +310,12 @@ namespace NW_Market_Collector
                 {
                     FilePath = processedPath,
                     BucketName = "nwmarketimages",
-                    Key = Guid.NewGuid().ToString("D"),
+                    Key = Configuration.Server + "/" + Guid.NewGuid().ToString("D"),
                 };
                 putRequest.StreamTransferProgress += new EventHandler<StreamTransferProgressArgs>(UpdateProgress);
                 putRequest.Metadata.Add("timestamp", fileCreationTime.ToString("o"));
                 putRequest.Metadata.Add("textcontent", textContent);
-                putRequest.Metadata.Add("user", user);
+                putRequest.Metadata.Add("user", configuration.User);
 
                 Trace.WriteLine($"Found new market image '{processedPath}' with text '{textContent.Substring(0, Math.Min(textContent.Length, 20))}...', uploading...");
                 await s3Client.PutObjectAsync(putRequest);

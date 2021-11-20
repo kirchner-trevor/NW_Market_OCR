@@ -38,6 +38,8 @@ namespace NW_Market_OCR
             new ManualAutocorrect("Wyrdwood", 3, new[] { "Wymv", "WMwood" }),
         };
 
+        private static readonly string[] SERVER_LIST = new[] { "orofena" };
+
         [STAThread]
         static async Task Main(string[] args)
         {
@@ -60,7 +62,6 @@ namespace NW_Market_OCR
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
-            database.LoadDatabaseFromDisk();
 
             //MarketDatabase cleanedDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
             //foreach (MarketListing marketListing in database.Listings)
@@ -78,44 +79,51 @@ namespace NW_Market_OCR
 
             while (true)
             {
-                Console.WriteLine($"Searching s3 for images...");
-                ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
+                foreach (string server in SERVER_LIST)
                 {
-                    BucketName = "nwmarketimages",
-                });
+                    database.SetServer(server);
+                    database.LoadDatabaseFromDisk();
 
-                if (marketImages.S3Objects.Any())
-                {
-                    Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
-                    foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
+                    Console.WriteLine($"Searching s3 for images...");
+                    ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
                     {
-                        GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                        BucketName = "nwmarketimages",
+                        Prefix = server + "/",
+                    });
+
+                    if (marketImages.S3Objects.Any())
+                    {
+                        Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                        foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
                         {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
+                            GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                            {
+                                BucketName = nwMarketImageObject.BucketName,
+                                Key = nwMarketImageObject.Key,
+                            });
 
-                        string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                        await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                        DateTime captureTime = mwMarketImage.Metadata.Keys.Contains("timestamp") ? DateTime.Parse(mwMarketImage.Metadata["timestamp"]) : DateTime.UtcNow;
+                            string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                            await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                            DateTime captureTime = mwMarketImage.Metadata.Keys.Contains("timestamp") ? DateTime.Parse(mwMarketImage.Metadata["timestamp"]) : DateTime.UtcNow;
 
-                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+                            UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
-                        await TryUploadDatabaseRateLimited(s3Client, database);
+                            await TryUploadDatabaseRateLimited(s3Client, database, server);
 
-                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                        {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
+                            await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                            {
+                                BucketName = nwMarketImageObject.BucketName,
+                                Key = nwMarketImageObject.Key,
+                            });
+                        }
                     }
-                }
-                else
-                {
-                    await TryUploadDatabaseRateLimited(s3Client, database);
+                    else
+                    {
+                        await TryUploadDatabaseRateLimited(s3Client, database, server);
 
-                    Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
-                    Thread.Sleep(TimeSpan.FromSeconds(30));
+                        Console.WriteLine("Found no objects in bucket, waiting 30 seconds...");
+                        Thread.Sleep(TimeSpan.FromSeconds(30));
+                    }
                 }
             }
         }
@@ -126,7 +134,7 @@ namespace NW_Market_OCR
 
         private static int itemsAddedToDatabase = 0;
 
-        public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database)
+        public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database, string server)
         {
             // TODO : Clean database listings for sharing (remove unused data, etc)
 
@@ -136,7 +144,7 @@ namespace NW_Market_OCR
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
                     BucketName = "nwmarketdata",
-                    Key = "database.json",
+                    Key = server + "/database.json",
                     FilePath = database.GetDataBasePathOnDisk(),
                 });
                 lastDatabaseUploadTime = DateTime.UtcNow;
@@ -518,7 +526,8 @@ namespace NW_Market_OCR
 
             itemsAddedToDatabase += cleanedMarketListing.Count;
 
-            // TODO: Purge entries older than X months
+            // Delete all entries that expired more than 8 days ago
+            database.Listings.RemoveAll(_ => _.Latest.Time + _.Latest.TimeRemaining < DateTime.UtcNow.AddDays(-8));
 
             database.SaveDatabaseToDisk();
         }

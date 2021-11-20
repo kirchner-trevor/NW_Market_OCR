@@ -11,6 +11,7 @@ namespace NW_Market_Tools
     class MarketTools
     {
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
+        private static readonly string[] SERVER_LIST = new[] { "orofena" };
 
         static async Task Main(string[] args)
         {
@@ -20,21 +21,26 @@ namespace NW_Market_Tools
             string secretAccessKey = credentialParts[1];
 
             MarketDatabase marketDatabase = new MarketDatabase(DATA_DIRECTORY);
+            ItemDatabase itemDatabase = new ItemDatabase(DATA_DIRECTORY);
             AmazonS3Client s3Client = new AmazonS3Client(accessKeyId, secretAccessKey, RegionEndpoint.USEast2);
 
             IMarketTool[] tools = new IMarketTool[]
             {
-                new RecipePriceFinder(accessKeyId, secretAccessKey),
-                new ItemPriceTrendFinder(marketDatabase, s3Client, DATA_DIRECTORY)
+                new ItemPriceTrendFinder(marketDatabase, s3Client, itemDatabase),
+                new RecipePriceFinder(accessKeyId, secretAccessKey, itemDatabase),
             };
 
             DateTime startTime;
             while (true)
             {
                 startTime = DateTime.UtcNow;
-                foreach (IMarketTool tool in tools)
+
+                foreach (string server in SERVER_LIST)
                 {
-                    await tool.Run();
+                    foreach (IMarketTool tool in tools)
+                    {
+                        await tool.Run(server);
+                    }
                 }
 
                 int sleepTimeMs = (int)Math.Max(0, TimeSpan.FromMinutes(5).TotalMilliseconds - (DateTime.UtcNow - startTime).TotalMilliseconds);

@@ -18,7 +18,7 @@ namespace NW_Market_Tools
         private static int[] TARGET_TRADESKILL_LEVELS = new[] { 200 };
         private static string TARGET_ITEM = default;
 
-        private static DateTime DATE_FILTER = DateTime.UtcNow.AddDays(-1);
+        private static DateTime DATE_FILTER = DateTime.UtcNow.AddDays(-7);
         private static string LOCATION_FILTER = default;
         private static float SIMILAR_COST_PERCENTAGE = 0.25f; // How much more expensive an item can be and still get included in the total available amount
         private static int MIN_AVAILABLE = 1;
@@ -31,24 +31,26 @@ namespace NW_Market_Tools
 
         private readonly string AccessKeyId;
         private readonly string SecretAccessKey;
+        private readonly ItemDatabase itemDatabase;
 
         private DateTime lastUpdateDate = DateTime.MinValue;
 
-        public RecipePriceFinder(string accessKeyId, string secretAccessKey)
+        public RecipePriceFinder(string accessKeyId, string secretAccessKey, ItemDatabase itemDatabase)
         {
             AccessKeyId = accessKeyId;
             SecretAccessKey = secretAccessKey;
+            this.itemDatabase = itemDatabase;
         }
 
-        public async Task Run()
+        public async Task Run(string server)
         {
-            MarketDatabase marketDatabase = new MarketDatabase(DATA_DIRECTORY);
-            marketDatabase.LoadDatabaseFromDisk();
-            Console.WriteLine($"Market Listings: {marketDatabase.Listings.Count}");
+            itemDatabase.SetServer(server);
+            itemDatabase.LoadDatabaseFromDisk();
+            Console.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
 
-            if (marketDatabase.Updated > lastUpdateDate)
+            if (itemDatabase.Contents.Updated > lastUpdateDate)
             {
-                lastUpdateDate = marketDatabase.Updated;
+                lastUpdateDate = itemDatabase.Contents.Updated;
 
                 NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY);
                 List<ItemsPageData> items = await nwdbInfoApiClient.ListItemsAsync();
@@ -83,7 +85,7 @@ namespace NW_Market_Tools
                         Dictionary<string, RecipeCraftSummary> recipeSummaryCache = new Dictionary<string, RecipeCraftSummary>();
                         foreach (RecipeData recipeToCraft in recipesToCraft)
                         {
-                            RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
+                            RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, recipeDetails, null, recipeSummaryCache);
 
                             if (SHOW_ALL_RECIPES)
                             {
@@ -120,7 +122,7 @@ namespace NW_Market_Tools
                         {
                             foreach (RecipeData recipeToCraft in recipesToCraft)
                             {
-                                RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, marketDatabase, recipeDetails, null, recipeSummaryCache);
+                                RecipeCraftSummary recipeSummary = GetRecipeSummary(recipeToCraft, recipeDetails, null, recipeSummaryCache);
                                 unobtainableIngredients.AddRange(recipeSummary.Unobtainable);
                             }
                         }
@@ -146,7 +148,7 @@ namespace NW_Market_Tools
                 }
 
                 Console.WriteLine("Writing recipe suggestions to disk...");
-                string recipeSuggestionsPath = Path.Combine(DATA_DIRECTORY, "recipeSuggestions.json");
+                string recipeSuggestionsPath = Path.Combine(DATA_DIRECTORY, server, "recipeSuggestions.json");
                 string json = JsonSerializer.Serialize(new RecipeSuggestions
                 {
                     Suggestions = itemCraftingSuggestions
@@ -164,7 +166,7 @@ namespace NW_Market_Tools
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
                     BucketName = "nwmarketdata",
-                    Key = "recipeSuggestions.json",
+                    Key = server + "/recipeSuggestions.json",
                     FilePath = recipeSuggestionsPath,
                 });
                 Console.WriteLine("Recipe suggestions uploaded!");
@@ -200,7 +202,7 @@ namespace NW_Market_Tools
                     Available = _.TotalAvailableAtLocation,
                     Location = _.Location,
                     Name = _.Name,
-                    CostPerQuantity = _.Listing.Price,
+                    CostPerQuantity = _.ItemStats.GetLatest().AveragePrice,
                     Quantity = _.Quantity,
                 }).ToList(),
                 Crafts = recipeSummary.Crafts.Select(_ => ConvertToCraftItemSuggestion(_)).ToList(),
@@ -247,7 +249,7 @@ namespace NW_Market_Tools
             foreach (RecipeBuyItemAction buy in recipeSummary.Buys)
             {
                 RecipeBuyItemAction itemBuy = itemBuys[buy.Name];
-                Console.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.Listing.Price}ea | {itemBuy.TotalAvailableAtLocation} @ {itemBuy.Location})");
+                Console.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.ItemStats.GetLatest().AveragePrice}ea | {itemBuy.TotalAvailableAtLocation} @ {itemBuy.Location})");
             }
             foreach (RecipeDataIngredient unobtainable in recipeSummary.Unobtainable)
             {
@@ -268,23 +270,23 @@ namespace NW_Market_Tools
 
             foreach (RecipeBuyItemAction buy in recipeSummary.Buys)
             {
-                if (itemsToBuy.ContainsKey(buy.Listing.Name))
+                if (itemsToBuy.ContainsKey(buy.ItemStats.Name))
                 {
-                    itemsToBuy[buy.Listing.Name].Quantity += buy.Quantity * recipeSummary.CraftCount;
-                    itemsToBuy[buy.Listing.Name].TotalCost += buy.TotalCost * recipeSummary.CraftCount;
+                    itemsToBuy[buy.ItemStats.Name].Quantity += buy.Quantity * recipeSummary.CraftCount;
+                    itemsToBuy[buy.ItemStats.Name].TotalCost += buy.TotalCost * recipeSummary.CraftCount;
                 }
                 else
                 {
                     RecipeBuyItemAction buyItemAction = new RecipeBuyItemAction
                     {
-                        Listing = buy.Listing,
+                        ItemStats = buy.ItemStats,
                         Location = buy.Location,
                         Name = buy.Name,
                         Quantity = buy.Quantity * recipeSummary.CraftCount,
                         TotalCost = buy.TotalCost * recipeSummary.CraftCount,
                         TotalAvailableAtLocation = buy.TotalAvailableAtLocation,
                     };
-                    itemsToBuy.Add(buy.Listing.Name, buyItemAction);
+                    itemsToBuy.Add(buy.ItemStats.Name, buyItemAction);
                 }
             }
 
@@ -320,7 +322,7 @@ namespace NW_Market_Tools
             return tradeskillExp;
         }
 
-        private static RecipeCraftSummary GetRecipeSummary(RecipeData recipe, MarketDatabase marketDatabase, List<RecipeData> recipeDetails, List<string> allIngredients = null, Dictionary<string, RecipeCraftSummary> recipeSummaryCache = null)
+        private RecipeCraftSummary GetRecipeSummary(RecipeData recipe, List<RecipeData> recipeDetails, List<string> allIngredients = null, Dictionary<string, RecipeCraftSummary> recipeSummaryCache = null)
         {
             if (allIngredients == null)
             {
@@ -363,24 +365,19 @@ namespace NW_Market_Tools
                 CraftBuyOptions minimumCostCraftBuyOptions = default;
                 foreach (RecipeDataIngredient recipeDataIngredient in ingredientsToCheck)
                 {
-                    MarketListing marketListingToBuy = default;
+                    ItemStats itemToBuy = default;
                     int marketListingTotalAvailableAtLocation = 0;
                     float minimumCostToBuy = float.MaxValue;
-                    MarketItemSummary marketSummary = marketDatabase.GetItemSummary(recipeDataIngredient.Name, LOCATION_FILTER, DATE_FILTER, INCLUDE_EXPIRED);
-                    if (marketSummary.LocationPrices.Count != 0)
+
+                    ItemStats item = itemDatabase.Contents.Items.FirstOrDefault(_ => _.Name == recipeDataIngredient.Name);
+                    PeriodicItemStats latestItemStats = item?.GetLatest();
+                    if (latestItemStats != null)
                     {
-                        foreach (TimePrices timePrices in marketSummary.LocationPrices.SelectMany(_ => _.TimePrices))
+                        if ((latestItemStats.AveragePrice * recipeDataIngredient.Quantity) < minimumCostToBuy)
                         {
-                            IEnumerable<float> pricesOfQuantity = timePrices.Listings.Where(_ => _.Latest.Available >= MIN_AVAILABLE).Select(_ => _.Price);
-                            float minPriceOfQuantity = pricesOfQuantity.Any() ? pricesOfQuantity.Min() : float.MaxValue;
-                            if ((minPriceOfQuantity * recipeDataIngredient.Quantity) < minimumCostToBuy)
-                            {
-                                marketListingToBuy = timePrices.Listings.First(_ => _.Price == minPriceOfQuantity);
-                                minimumCostToBuy = timePrices.Minimum * recipeDataIngredient.Quantity;
-                                marketListingTotalAvailableAtLocation = timePrices.Listings
-                                    .Where(_ => (Math.Abs(_.Price - marketListingToBuy.Price) <= marketListingToBuy.Price * SIMILAR_COST_PERCENTAGE) && _.Location == marketListingToBuy.Location)
-                                    .Sum(_ => _.Latest.Available);
-                            }
+                            itemToBuy = item;
+                            minimumCostToBuy = latestItemStats.AveragePrice * recipeDataIngredient.Quantity;
+                            marketListingTotalAvailableAtLocation = latestItemStats.TotalAvailableBelowMarketAverage;
                         }
                     }
 
@@ -395,7 +392,7 @@ namespace NW_Market_Tools
 
                     foreach (RecipeData ingredientRecipe in ingredientRecipes)
                     {
-                        RecipeCraftSummary ingredientRecipeSummary = GetRecipeSummary(ingredientRecipe, marketDatabase, recipeDetails, new List<string>(allIngredients), recipeSummaryCache);
+                        RecipeCraftSummary ingredientRecipeSummary = GetRecipeSummary(ingredientRecipe, recipeDetails, new List<string>(allIngredients), recipeSummaryCache);
                         ingredientRecipeSummary.CraftCount = (int)Math.Ceiling(recipeDataIngredient.Quantity / (ingredientRecipe.Output.Quantity * 1d));
                         float ingredientRecipeCostToCraft = (float)Math.Round(ingredientRecipeSummary.MinimumCost * recipeDataIngredient.Quantity, 2); // ingredientRecipe.CraftingFee seems broken
 
@@ -418,11 +415,11 @@ namespace NW_Market_Tools
                         {
                             minimumCostCraftBuyOptions.Buy = new RecipeBuyItemAction
                             {
-                                Location = marketListingToBuy.Location,
-                                Name = marketListingToBuy.Name,
+                                Location = null,
+                                Name = itemToBuy.Name,
                                 Quantity = recipeDataIngredient.Quantity,
                                 TotalCost = minimumCostToBuy,
-                                Listing = marketListingToBuy,
+                                ItemStats = itemToBuy,
                                 TotalAvailableAtLocation = marketListingTotalAvailableAtLocation,
                             };
                         }
@@ -480,7 +477,7 @@ namespace NW_Market_Tools
             public float TotalCost;
             public int TotalAvailableAtLocation;
 
-            public MarketListing Listing;
+            public ItemStats ItemStats;
         }
     }
 }
