@@ -9,8 +9,8 @@ export default {
             <b-collapse id="nav-collapse" is-nav>
                 <b-navbar-nav>
                     <b-nav-text><strong>Server</strong></b-nav-text>
-                    <b-nav-item-dropdown :text="server">
-                        <b-dropdown-item v-for="server in serverList" :key="server" :href="'#/' + server" @click="changeServer(server)">{{server}}</b-dropdown-item>
+                    <b-nav-item-dropdown :text="selectedServer">
+                        <b-dropdown-item v-for="serverChoice in serverList" :key="serverChoice" :href="'#/' + serverChoice" @click="changeServer(serverChoice)">{{serverChoice}}</b-dropdown-item>
                     </b-nav-item-dropdown>
                 </b-navbar-nav>
             </b-collapse>
@@ -23,7 +23,7 @@ export default {
         </b-card>
         </br>
         <b-card no-body>
-            <b-tabs card>
+            <b-tabs v-model="tabIndex" card>
                 <b-tab  @click="loadMarketData" lazy>
                     <template #title>
                         Listings <b-badge v-if="marketDataLoaded">{{marketData.Listings.length}}</b-badge><b-spinner type="border" v-if="!marketDataLoaded && marketDataRequested" small></b-spinner>
@@ -61,7 +61,7 @@ export default {
                         </template>
                     </b-table>
                 </b-tab>
-                <b-tab title="Recipes" @click="loadRecipeSuggestions" active lazy>
+                <b-tab title="Recipes" @click="loadRecipeSuggestions" lazy>
                     <template #title>
                         Recipes <b-badge v-if="recipeSuggestionsLoaded">{{recipeSuggestions.Suggestions.length}}</b-badge><b-spinner type="border" v-if="!recipeSuggestionsLoaded && recipeSuggestionsRequested" small></b-spinner>
                     </template>
@@ -224,7 +224,8 @@ export default {
     `,
     data() {
         return {
-            serverKey: null,
+            selectedServer: null,
+            tabIndex: 1,
             marketDataRequested: false,
             marketDataLoaded: false,
             marketData: {
@@ -297,7 +298,9 @@ export default {
         };
     },
     mounted() {
+        this.selectedServer = this.server;
         this.loadRecipeSuggestions();
+        this.tabIndex = 1;
     },
     props: {
         server: {
@@ -309,7 +312,7 @@ export default {
         loadMarketData() {
             if (!this.marketDataLoaded) {
                 this.marketDataRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.server.toLowerCase() + "/database.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/database.json")
                     .then(response => response.json())
                     .then(data => {
                         this.marketData = data;
@@ -320,7 +323,7 @@ export default {
         loadRecipeSuggestions() {
             if (!this.recipeSuggestionsLoaded) {
                 this.recipeSuggestionsRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.server.toLowerCase() + "/recipeSuggestions.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/recipeSuggestions.json")
                     .then(response => response.json())
                     .then(data => {
                         this.recipeSuggestions = data;
@@ -331,7 +334,7 @@ export default {
         loadItemTrendData() {
             if (!this.itemTrendDataLoaded) {
                 this.itemTrendDataRequested = true;
-                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.server.toLowerCase() + "/itemTrendData.json")
+                fetch("https://nwmarketdata.s3.us-east-2.amazonaws.com/" + this.selectedServer.toLowerCase() + "/itemTrendData.json")
                     .then(response => response.json())
                     .then(data => {
                         this.itemTrendData = data;
@@ -362,30 +365,34 @@ export default {
             return Math.round(number * 100) / 100;
         },
         changeServer(server) {
-            this.server = server;
+            if (this.selectedServer !== server)
+            {
+                this.selectedServer = server;
 
-            this.marketDataRequested = false;
-            this.marketDataLoaded = false;
-            this.marketData = {
-                Updated: null,
-                Listings: [],
-            };
+                this.marketDataRequested = false;
+                this.marketDataLoaded = false;
+                this.marketData = {
+                    Updated: null,
+                    Listings: [],
+                };
 
-            this.recipeSuggestionsRequested = false;
-            this.recipeSuggestionsLoaded = false;
-            this.recipeSuggestions = {
-                Updated: null,
-                Suggestions: []
-            };
+                this.recipeSuggestionsRequested = false;
+                this.recipeSuggestionsLoaded = false;
+                this.recipeSuggestions = {
+                    Updated: null,
+                    Suggestions: []
+                };
 
-            this.itemTrendDataRequested = false;
-            this.itemTrendDataLoaded = false;
-            this.itemTrendData = {
-                Updated: null,
-                Items: []
-            };
+                this.itemTrendDataRequested = false;
+                this.itemTrendDataLoaded = false;
+                this.itemTrendData = {
+                    Updated: null,
+                    Items: []
+                };
 
-            this.loadRecipeSuggestions();
+                this.loadRecipeSuggestions();
+                this.tabIndex = 1;
+            }
         }
     },
     computed: {
