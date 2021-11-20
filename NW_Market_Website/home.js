@@ -313,7 +313,7 @@ export default {
     },
     mounted() {
         this.loadConfigurationData();
-        this.selectedServerId = this.server;
+        this.selectedServerId = this.server.toLowerCase();
         this.loadRecipeSuggestions();
         this.tabIndex = 1;
     },
