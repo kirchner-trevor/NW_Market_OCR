@@ -100,6 +100,7 @@ namespace MW_Market_Model
         public void LoadDatabaseFromDisk()
         {
             Listings = new List<MarketListing>();
+            Updated = DateTime.MinValue;
 
             if (File.Exists(GetDatabasePathOnDisk()))
             {
