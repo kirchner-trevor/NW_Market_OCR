@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Serialization;
 
@@ -47,7 +48,7 @@ namespace MW_Market_Model
             }
             else
             {
-                Console.WriteLine($"Bad merge requested! Ignoring! This: {this}, Other: {other}");
+                Trace.WriteLine($"Bad merge requested! Ignoring! This: {this}, Other: {other}");
             }
             return this;
         }

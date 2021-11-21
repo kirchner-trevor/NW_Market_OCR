@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -25,14 +26,14 @@ namespace MW_Market_Model
         public void SaveDatabaseToDisk()
         {
             Contents.Updated = DateTime.UtcNow;
-            Console.WriteLine($"Saving {DATABASE_FILE_NAME} to disk...");
+            Trace.WriteLine($"Saving {DATABASE_FILE_NAME} to disk...");
             string json = JsonSerializer.Serialize(Contents);
             File.WriteAllText(GetDataBasePathOnDisk(), json);
         }
 
         public void LoadDatabaseFromDisk()
         {
-            Console.WriteLine($"Loading {DATABASE_FILE_NAME} from disk...");
+            Trace.WriteLine($"Loading {DATABASE_FILE_NAME} from disk...");
             Contents = null;
             if (File.Exists(GetDataBasePathOnDisk()))
             {

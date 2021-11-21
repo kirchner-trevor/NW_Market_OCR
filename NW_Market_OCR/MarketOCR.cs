@@ -6,6 +6,7 @@ using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -42,6 +43,10 @@ namespace NW_Market_OCR
         [STAThread]
         static async Task Main(string[] args)
         {
+            Trace.AutoFlush = true;
+            Trace.Listeners.Add(new TextWriterTraceListener("log.txt"));
+            Trace.Listeners.Add(new ConsoleTraceListener());
+
             var config = new ConfigurationBuilder()
                 .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
                 .AddUserSecrets<MarketOCR>()
@@ -53,11 +58,11 @@ namespace NW_Market_OCR
                 SecretAccessKey = config["S3:SecretAccessKey"],
             };
 
-            Console.WriteLine($"Loading item database...");
+            Trace.WriteLine($"Loading item database...");
             itemsDatabase = await new NwdbInfoApiClient(DATA_DIRECTORY).ListItemsAsync();
             itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
 
-            Console.WriteLine($"Trying to extract market data from New World on your primary monitor...");
+            Trace.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
@@ -85,31 +90,40 @@ namespace NW_Market_OCR
                     database.SetServer(server.Id);
                     database.LoadDatabaseFromDisk();
 
-                    Console.WriteLine($"Searching s3 for images...");
+                    if (!itemsAddedToDatabase.ContainsKey(server.Id))
+                    {
+                        itemsAddedToDatabase.Add(server.Id, 0);
+                        lastDatabaseUploadTime.Add(server.Id, database.Updated);
+                    }
+
                     ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
                     {
                         BucketName = "nwmarketimages",
-                        Prefix = server + "/",
+                        Prefix = server.Id + "/",
                     });
 
                     if (marketImages.S3Objects.Any())
                     {
-                        Console.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                        Trace.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
                         foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
                         {
-                            GetObjectResponse mwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                            GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
                             {
                                 BucketName = nwMarketImageObject.BucketName,
                                 Key = nwMarketImageObject.Key,
                             });
 
                             string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                            await mwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                            DateTime captureTime = mwMarketImage.Metadata.Keys.Contains("timestamp") ? DateTime.Parse(mwMarketImage.Metadata["timestamp"]) : DateTime.UtcNow;
+                            await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                            DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
+                            string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
+                            Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
 
                             UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
                             await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
+
+                            BackupImageLocally(nwMarketImage, processedPath);
 
                             await s3Client.DeleteObjectAsync(new DeleteObjectRequest
                             {
@@ -121,27 +135,43 @@ namespace NW_Market_OCR
                     else
                     {
                         await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
-
-                        Console.WriteLine($"Found no objects in bucket for {server}...");
                     }
                 }
 
-                Console.WriteLine($"Sleeping for 30 seconds...");
+                Trace.WriteLine($"Sleeping for 30 seconds...");
                 Thread.Sleep(TimeSpan.FromSeconds(30));
             }
         }
 
-        private static DateTime lastDatabaseUploadTime = DateTime.MinValue;
+        private static void BackupImageLocally(GetObjectResponse nwMarketImage, string processedPath)
+        {
+            if (File.Exists(processedPath))
+            {
+                Trace.WriteLine($"Backing up image {nwMarketImage.Key} to processed folder.");
+                string backupDestination = Path.Combine(Directory.GetCurrentDirectory(), "processed", nwMarketImage.Key + ".png");
+                string processedDirectory = Path.GetDirectoryName(backupDestination);
+                Directory.CreateDirectory(processedDirectory);
+                string[] previouslyProcessedFiles = Directory.GetFiles(processedDirectory, "*", SearchOption.AllDirectories);
+                if (previouslyProcessedFiles.Length > 100)
+                {
+                    string oldestFile = previouslyProcessedFiles.OrderBy(_ => File.GetCreationTimeUtc(_)).FirstOrDefault();
+                    File.Delete(oldestFile);
+                }
+                File.Move(processedPath, backupDestination);
+            }
+        }
+
         private static TimeSpan databaseUploadDelay = TimeSpan.FromSeconds(30);
         private static TimeSpan maxDatabaseUploadDelay = TimeSpan.FromMinutes(30);
         private static int databaseUploadItemThreshold = 18;
 
-        private static int itemsAddedToDatabase = 0;
+        private static Dictionary<string, DateTime> lastDatabaseUploadTime = new Dictionary<string, DateTime>();
+        private static Dictionary<string, int> itemsAddedToDatabase = new Dictionary<string, int>();
 
         public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database, string server)
         {
-            TimeSpan timeSinceLastUpload = DateTime.UtcNow - lastDatabaseUploadTime;
-            if ((itemsAddedToDatabase >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay) || (itemsAddedToDatabase > 0 && timeSinceLastUpload > maxDatabaseUploadDelay))
+            TimeSpan timeSinceLastUpload = DateTime.UtcNow - lastDatabaseUploadTime[server];
+            if ((itemsAddedToDatabase[server] >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay) || (itemsAddedToDatabase[server] > 0 && timeSinceLastUpload > maxDatabaseUploadDelay))
             {
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
@@ -149,12 +179,12 @@ namespace NW_Market_OCR
                     Key = server + "/database.json",
                     FilePath = database.GetDatabasePathOnDisk(),
                 });
-                lastDatabaseUploadTime = DateTime.UtcNow;
-                itemsAddedToDatabase = 0;
+                lastDatabaseUploadTime[server] = DateTime.UtcNow;
+                itemsAddedToDatabase[server] = 0;
             }
             else
             {
-                Console.WriteLine($"Skipping database upload, criteria not met. Items Added: {itemsAddedToDatabase} >= {databaseUploadItemThreshold} and Time Passed: {timeSinceLastUpload.TotalMinutes} minutes >= {databaseUploadDelay.TotalMinutes} minutes");
+                Trace.WriteLine($"Skipping database upload for {server}. Items Added: {itemsAddedToDatabase[server]} >= {databaseUploadItemThreshold} and Time Passed: {(int)timeSinceLastUpload.TotalMinutes} minutes >= {databaseUploadDelay.TotalMinutes} minutes");
             }
         }
 
@@ -332,20 +362,20 @@ namespace NW_Market_OCR
             (string newName, int nameDistance) = Autocorrect(marketListing.Name, itemsNames);
             if (nameDistance > 0)
             {
-                Console.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
+                Trace.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
             }
             marketListing.Name = newName;
 
             (string newLocation, int locationDistance) = Autocorrect(marketListing.Location, locationNames);
             if (locationDistance > 0)
             {
-                Console.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
+                Trace.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
             }
             marketListing.Location = newLocation;
 
             if (marketListing.Latest.Available == 0)
             {
-                Console.WriteLine($"Updating available from 0 to 1...");
+                Trace.WriteLine($"Updating available from 0 to 1...");
                 marketListing.Latest.Available = 1;
             }
 
@@ -403,7 +433,7 @@ namespace NW_Market_OCR
                     {
                         minDistance = 0;
                         minDistanceItemName = autocorrect.CorrectedValue;
-                        Console.WriteLine($"Using manual autocorrect for '{value}'...");
+                        Trace.WriteLine($"Using manual autocorrect for '{value}'...");
                     }
                 }
             }
@@ -493,7 +523,7 @@ namespace NW_Market_OCR
                 }
                 else
                 {
-                    Console.WriteLine($"Omitting bad market listing {newMarketListing}");
+                    Trace.WriteLine($"Omitting bad market listing {newMarketListing}");
                 }
             }
 
@@ -515,18 +545,25 @@ namespace NW_Market_OCR
                 }
                 else
                 {
-                    Console.WriteLine($"Omitting bad market listing {marketListing}");
+                    Trace.WriteLine($"Omitting bad market listing {marketListing}");
                 }
             }
 
             foreach (MarketListing marketListing in cleanedMarketListing)
             {
-                Console.WriteLine($"{marketListing}");
+                Trace.WriteLine($"{marketListing}");
             }
 
             MergeSimilarListingsIntoDatabase(cleanedMarketListing, database);
 
-            itemsAddedToDatabase += cleanedMarketListing.Count;
+            if (itemsAddedToDatabase.ContainsKey(database.GetServer()))
+            {
+                itemsAddedToDatabase[database.GetServer()] += cleanedMarketListing.Count;
+            }
+            else
+            {
+                itemsAddedToDatabase.Add(database.GetServer(), 0);
+            }
 
             // Delete all entries that expired more than 8 days ago
             database.Listings.RemoveAll(_ => _.Latest.Time + _.Latest.TimeRemaining < DateTime.UtcNow.AddDays(-8));
@@ -556,19 +593,19 @@ namespace NW_Market_OCR
                     {
                         if (isFirst && next.HasValue && next.Value != 0)
                         {
-                            Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {next.Value}");
+                            Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {next.Value}");
                             marketListings[i].Price = next.Value;
                             updatedPrice = true;
                         }
                         else if (isLast && previous.HasValue && previous.Value != 0)
                         {
-                            Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previous.Value}");
+                            Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previous.Value}");
                             marketListings[i].Price = previous.Value;
                             updatedPrice = true;
                         }
                         else if (marketListings.Count >= 3 && !isFirst && !isLast && next.Value != 0 && previous.Value != 0)
                         {
-                            Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {(((next.Value - previous.Value) / 2f) + previous.Value)}");
+                            Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {(((next.Value - previous.Value) / 2f) + previous.Value)}");
                             marketListings[i].Price = ((next.Value - previous.Value) / 2f) + previous.Value;
                             updatedPrice = true;
                         }
@@ -579,7 +616,7 @@ namespace NW_Market_OCR
                     //if (!IsCurrentInOrder(i, marketListings) && (IsPreviousTwoAscending(i, marketListings) && IsNextTwoAscending(i, marketListings)))
                     //{
                     //    float previousNextMidpoint = ((next.Value - previous.Value) / 2f) + previous.Value;
-                    //    Console.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previousNextMidpoint}");
+                    //    Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previousNextMidpoint}");
                     //    marketListings[i].Price = previousNextMidpoint;
                     //    updatedPrice = true;
                     //}
@@ -608,7 +645,7 @@ namespace NW_Market_OCR
                 // If enough of the data is the same from the previous run, exit without updating the database
                 if (matchingDatapoints >= MIN_MATCHING_DATAPOINTS_FOR_SKIP)
                 {
-                    Console.WriteLine($"Found {matchingDatapoints} matching datapoints from the previous run, skipping database update...");
+                    Trace.WriteLine($"Found {matchingDatapoints} matching datapoints from the previous run, skipping database update...");
                     foundDuplicateListings = true;
                 }
             }
@@ -708,7 +745,7 @@ namespace NW_Market_OCR
 
         //        if (foundBetterPrice)
         //        {
-        //            Console.WriteLine($"Corrected price for '{newMarketListing.Name}' from {newMarketListing.Price} to {priceChoice} using closest to average");
+        //            Trace.WriteLine($"Corrected price for '{newMarketListing.Name}' from {newMarketListing.Price} to {priceChoice} using closest to average");
         //            newMarketListing.Price = priceChoice;
         //        }
         //    }

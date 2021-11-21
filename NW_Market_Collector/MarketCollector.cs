@@ -251,7 +251,7 @@ namespace NW_Market_Collector
 
             if (ImageContainsBlueBanner(path))
             {
-                Trace.Write("Found market interface capturing market listings... ");
+                Trace.WriteLine("Found market interface capturing market listings... ");
 
                 path = MoveNewImageToCaptures(path);
 
@@ -261,7 +261,7 @@ namespace NW_Market_Collector
             else
             {
                 ConsoleHUD.CollectorStatus = "Looking for Market";
-                Trace.Write("No market interface... ");
+                Trace.WriteLine("No market interface... ");
                 WaitForTotalTimeToPass(startTime, OUT_OF_MARKET_DELAY);
             }
         }
@@ -291,7 +291,7 @@ namespace NW_Market_Collector
                 }
 
                 ConsoleHUD.ProcessorStatus = "Waiting For More Files";
-                Trace.Write("Waiting for more files... ");
+                Trace.WriteLine("Waiting for more files... ");
                 WaitForTotalTimeToPass(startTime, FILE_PROCESSING_DELAY);
             }
         }

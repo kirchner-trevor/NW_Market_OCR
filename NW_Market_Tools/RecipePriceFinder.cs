@@ -46,10 +46,11 @@ namespace NW_Market_Tools
         {
             itemDatabase.SetServer(server);
             itemDatabase.LoadDatabaseFromDisk();
-            Console.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
 
-            if (itemDatabase.Contents.Updated > lastUpdateDate)
+            if (itemDatabase.Contents != null && itemDatabase.Contents.Updated > lastUpdateDate)
             {
+                Console.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
+
                 lastUpdateDate = itemDatabase.Contents.Updated;
 
                 NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY);

@@ -101,7 +101,6 @@ namespace MW_Market_Model
         {
             Listings = new List<MarketListing>();
 
-            Console.WriteLine("Loading fresh database from disk...");
             if (File.Exists(GetDatabasePathOnDisk()))
             {
                 string freshJson = File.ReadAllText(GetDatabasePathOnDisk());
@@ -110,7 +109,6 @@ namespace MW_Market_Model
                 Updated = freshDatabase.Updated;
             }
 
-            Console.WriteLine("Loading expired database from disk...");
             if (File.Exists(GetDatabaseExpiredPathOnDisk()))
             {
                 string expiredJson = File.ReadAllText(GetDatabaseExpiredPathOnDisk());
@@ -123,6 +121,11 @@ namespace MW_Market_Model
         public void SetServer(string server)
         {
             Server = server;
+        }
+
+        public string GetServer()
+        {
+            return Server;
         }
 
         public string GetDatabasePathOnDisk()
