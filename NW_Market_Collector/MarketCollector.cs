@@ -20,7 +20,7 @@ using Tesseract;
 
 namespace NW_Market_Collector
 {
-    class MarketCollector : IDisposable
+    public class MarketCollector : IDisposable
     {
         private const int IN_MARKET_DELAY = 1_000;
         private const int OUT_OF_MARKET_DELAY = 5_000;
@@ -115,14 +115,26 @@ namespace NW_Market_Collector
             LatestTextBlob = "",
         };
 
-        private static ApplicationConfiguration Configuration;
-
-        private class ApplicationConfiguration
+        public class ApplicationConfiguration
         {
             public string Credentials { get; set; }
             public string Server { get; set; }
             public string User { get; set; }
             public ConfigurationRectangle CustomMarketArea { get; set; }
+
+            public string GetAccessKeyId()
+            {
+                string[] credentialPieces = !string.IsNullOrEmpty(Credentials) ? Credentials.Split(":") : new string[2];
+                string accessKeyId = credentialPieces[0];
+                return accessKeyId;
+            }
+
+            public string GetSecretAccessKey()
+            {
+                string[] credentialPieces = !string.IsNullOrEmpty(Credentials) ? Credentials.Split(":") : new string[2];
+                string secretAccessKey = credentialPieces[1];
+                return secretAccessKey;
+            }
 
             public struct ConfigurationRectangle
             {
@@ -139,47 +151,43 @@ namespace NW_Market_Collector
 
             Trace.Listeners.Add(new TextWriterTraceListener(LOG_FILE_NAME));
 
-            Configuration = new ApplicationConfiguration();
+            ApplicationConfiguration configuration = new ApplicationConfiguration();
 
-            Configuration.Credentials = args.Length >= 1 ? args[0] : null;
-            Configuration.Server = args.Length >= 2 ? args[1] : null;
-            Configuration.User = args.Length >= 3 ? args[2] : null;
+            configuration.Credentials = args.Length >= 1 ? args[0] : null;
+            configuration.Server = args.Length >= 2 ? args[1] : null;
+            configuration.User = args.Length >= 3 ? args[2] : null;
 
             Console.WriteLine("Welcome to the NW Market Collector!\n");
 
-            if (Configuration.Credentials == null)
+            if (configuration.Credentials == null)
             {
                 if (File.Exists("config.json"))
                 {
-                    Configuration = JsonSerializer.Deserialize<ApplicationConfiguration>(File.ReadAllText("config.json"));
+                    configuration = JsonSerializer.Deserialize<ApplicationConfiguration>(File.ReadAllText("config.json"));
                 }
 
-                if (string.IsNullOrWhiteSpace(Configuration?.Credentials))
+                if (string.IsNullOrWhiteSpace(configuration?.Credentials))
                 {
                     Console.Write("Credentials (e.g. xxxxx:yyyyyy): ");
-                    Configuration.Credentials = Console.ReadLine();
+                    configuration.Credentials = Console.ReadLine();
                 }
 
-                if (string.IsNullOrWhiteSpace(Configuration?.Server))
+                if (string.IsNullOrWhiteSpace(configuration?.Server))
                 {
                     Console.Write("Server (Required): ");
-                    Configuration.Server = Console.ReadLine();
+                    configuration.Server = Console.ReadLine();
                 }
 
-                if (string.IsNullOrWhiteSpace(Configuration?.User))
+                if (string.IsNullOrWhiteSpace(configuration?.User))
                 {
                     Console.Write("Username (Optional): ");
-                    Configuration.User = Console.ReadLine();
+                    configuration.User = Console.ReadLine();
                 }
             }
 
-            string[] credentialPieces = !string.IsNullOrEmpty(Configuration.Credentials) ? Configuration.Credentials.Split(":") : new string[2];
-            string accessKeyId = credentialPieces[0];
-            string secretAccessKey = credentialPieces[1];
+            configuration.Server = configuration.Server?.ToLowerInvariant();
 
-            Configuration.Server = Configuration.Server?.ToLowerInvariant();
-
-            if (accessKeyId == null || secretAccessKey == null)
+            if (configuration.GetAccessKeyId() == null || configuration.GetSecretAccessKey() == null)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Credentials not found! You must provide credentials to use this application.");
@@ -189,22 +197,27 @@ namespace NW_Market_Collector
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(Configuration.Server) || !configurationDatabase.Content.ServerList.Select(_ => _.Id).Contains(Configuration.Server))
+            if (string.IsNullOrWhiteSpace(configuration.Server) || !configurationDatabase.Content.ServerList.Select(_ => _.Id).Contains(configuration.Server))
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Server '{Configuration.Server}' not found! You must provide a valid server to use this application.");
+                Console.WriteLine($"Server '{configuration.Server}' not found! You must provide a valid server to use this application.");
                 Console.ResetColor();
                 Console.Write("Press enter to exit");
                 Console.ReadLine();
                 return;
             }
 
-            File.WriteAllText("config.json", JsonSerializer.Serialize(Configuration, new JsonSerializerOptions
+            File.WriteAllText("config.json", JsonSerializer.Serialize(configuration, new JsonSerializerOptions
             {
                 WriteIndented = true,
             }));
 
-            Thread processThread = new Thread(async () => await ProcessMarketImagesForever(accessKeyId, secretAccessKey, Configuration));
+            Start(configuration);
+        }
+
+        public static void Start(ApplicationConfiguration configuration)
+        {
+            Thread processThread = new Thread(async () => await ProcessMarketImagesForever(configuration.GetAccessKeyId(), configuration.GetSecretAccessKey(), configuration));
 
             try
             {
@@ -212,7 +225,7 @@ namespace NW_Market_Collector
 
                 while (isRunning)
                 {
-                    CaptureMarketImage();
+                    CaptureMarketImage(configuration);
                 }
             }
             catch (Exception e)
@@ -232,12 +245,12 @@ namespace NW_Market_Collector
             Console.ReadLine();
         }
 
-        private static void CaptureMarketImage()
+        private static void CaptureMarketImage(ApplicationConfiguration configuration)
         {
             Trace.WriteLine("Checking to see if you're at the market...");
             DateTime startTime = DateTime.UtcNow;
 
-            string path = SaveImageOfNewWorld();
+            string path = SaveImageOfNewWorld(configuration);
             if (path == null)
             {
                 ConsoleHUD.CollectorStatus = "Looking for New World";
@@ -311,7 +324,7 @@ namespace NW_Market_Collector
                 {
                     FilePath = processedPath,
                     BucketName = "nwmarketimages",
-                    Key = Configuration.Server + "/" + Guid.NewGuid().ToString("D"),
+                    Key = configuration.Server + "/" + Guid.NewGuid().ToString("D"),
                 };
                 putRequest.StreamTransferProgress += new EventHandler<StreamTransferProgressArgs>(UpdateProgress);
                 putRequest.Metadata.Add("timestamp", fileCreationTime.ToString("o"));
@@ -412,7 +425,7 @@ namespace NW_Market_Collector
             Thread.Sleep(timeToWait);
         }
 
-        private static string SaveImageOfNewWorld()
+        private static string SaveImageOfNewWorld(ApplicationConfiguration configuration)
         {
             IntPtr newWorldWindow = WindowPrinterV2.GetHandleOfFocusedWindowWithName("New World");
             if (newWorldWindow != IntPtr.Zero)
@@ -424,7 +437,7 @@ namespace NW_Market_Collector
 
                 using (Bitmap bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
                 {
-                    UpdateMarketAreaUsingWindowSize(bmpScreenshot.Width, bmpScreenshot.Height);
+                    UpdateMarketAreaUsingWindowSize(bmpScreenshot.Width, bmpScreenshot.Height, configuration);
 
                     bmpScreenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
                 }
@@ -438,19 +451,19 @@ namespace NW_Market_Collector
             }
         }
 
-        private static void UpdateMarketAreaUsingWindowSize(int width, int height)
+        private static void UpdateMarketAreaUsingWindowSize(int width, int height, ApplicationConfiguration configuration)
         {
             float xRatio = width / DEFAULT_SCREEN_SIZE.X;
             float yRation = height / DEFAULT_SCREEN_SIZE.Y;
 
-            if (Configuration.CustomMarketArea.Width != 0 && Configuration.CustomMarketArea.Height != 0)
+            if (configuration.CustomMarketArea.Width != 0 && configuration.CustomMarketArea.Height != 0)
             {
                 MarketArea = new Rectangle
                 {
-                    X = Configuration.CustomMarketArea.X,
-                    Y = Configuration.CustomMarketArea.Y,
-                    Width = Configuration.CustomMarketArea.Width,
-                    Height = Configuration.CustomMarketArea.Height,
+                    X = configuration.CustomMarketArea.X,
+                    Y = configuration.CustomMarketArea.Y,
+                    Width = configuration.CustomMarketArea.Width,
+                    Height = configuration.CustomMarketArea.Height,
                 };
             }
             else

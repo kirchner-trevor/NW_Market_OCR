@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net5.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
+    <ProjectReference Include="..\NW_Market_Collector\NW_Market_Collector.csproj" />
+  </ItemGroup>
+
+</Project>
