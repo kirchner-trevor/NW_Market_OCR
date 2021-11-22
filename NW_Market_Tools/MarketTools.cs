@@ -2,6 +2,7 @@
 using Amazon.S3;
 using MW_Market_Model;
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,10 @@ namespace NW_Market_Tools
 
         static async Task Main(string[] args)
         {
+            Trace.AutoFlush = true;
+            Trace.Listeners.Add(new TextWriterTraceListener("log.txt"));
+            Trace.Listeners.Add(new ConsoleTraceListener());
+
             string credentials = args[0];
             string[] credentialParts = credentials.Split(":");
             string accessKeyId = credentialParts[0];
@@ -35,11 +40,8 @@ namespace NW_Market_Tools
                 new ServerListActivity(configurationDatabase, s3Client, itemDatabase),
             };
 
-            DateTime startTime;
             while (true)
             {
-                startTime = DateTime.UtcNow;
-
                 foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
                 {
                     foreach (IMarketTool tool in perServerTools)
@@ -53,9 +55,8 @@ namespace NW_Market_Tools
                     await tool.Run(null);
                 }
 
-                int sleepTimeMs = (int)Math.Max(0, TimeSpan.FromMinutes(5).TotalMilliseconds - (DateTime.UtcNow - startTime).TotalMilliseconds);
-                Console.WriteLine($"Sleeping for {Math.Round(TimeSpan.FromMilliseconds(sleepTimeMs).TotalMinutes, 2)} minutes!");
-                Thread.Sleep(sleepTimeMs);
+                Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
+                Thread.Sleep((int)TimeSpan.FromMinutes(15).TotalMilliseconds);
             }
         }
     }

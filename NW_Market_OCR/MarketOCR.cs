@@ -85,61 +85,74 @@ namespace NW_Market_OCR
 
             while (true)
             {
-                foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
+                ListObjectsResponse allMarketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
                 {
-                    database.SetServer(server.Id);
-                    database.LoadDatabaseFromDisk();
+                    BucketName = "nwmarketimages",
+                    MaxKeys = 1,
+                });
 
-                    if (!itemsAddedToDatabase.ContainsKey(server.Id))
+                if (allMarketImages.S3Objects.Any())
+                {
+                    foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
                     {
-                        itemsAddedToDatabase.Add(server.Id, 0);
-                        lastDatabaseUploadTime.Add(server.Id, database.Updated);
-                    }
+                        database.SetServer(server.Id);
+                        database.LoadDatabaseFromDisk();
 
-                    ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
-                    {
-                        BucketName = "nwmarketimages",
-                        Prefix = server.Id + "/",
-                    });
-
-                    if (marketImages.S3Objects.Any())
-                    {
-                        Trace.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
-                        foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
+                        if (!itemsAddedToDatabase.ContainsKey(server.Id))
                         {
-                            GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                            itemsAddedToDatabase.Add(server.Id, 0);
+                            lastDatabaseUploadTime.Add(server.Id, database.Updated);
+                        }
+
+                        ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
+                        {
+                            BucketName = "nwmarketimages",
+                            Prefix = server.Id + "/",
+                        });
+
+                        if (marketImages.S3Objects.Any())
+                        {
+                            Trace.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
+                            foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
                             {
-                                BucketName = nwMarketImageObject.BucketName,
-                                Key = nwMarketImageObject.Key,
-                            });
+                                GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                                {
+                                    BucketName = nwMarketImageObject.BucketName,
+                                    Key = nwMarketImageObject.Key,
+                                });
 
-                            string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                            await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                            DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
-                            string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
-                            Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
+                                string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                                await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                                DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
+                                string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
+                                Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
 
-                            UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+                                UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
+                                await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
+
+                                BackupImageLocally(nwMarketImage, processedPath);
+
+                                await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                                {
+                                    BucketName = nwMarketImageObject.BucketName,
+                                    Key = nwMarketImageObject.Key,
+                                });
+                            }
+                        }
+                        else
+                        {
                             await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
-
-                            BackupImageLocally(nwMarketImage, processedPath);
-
-                            await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                            {
-                                BucketName = nwMarketImageObject.BucketName,
-                                Key = nwMarketImageObject.Key,
-                            });
                         }
                     }
-                    else
-                    {
-                        await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
-                    }
+                }
+                else
+                {
+                    Trace.WriteLine($"[{DateTime.UtcNow}] No objects in any S3 bucket...");
                 }
 
-                Trace.WriteLine($"Sleeping for 30 seconds...");
-                Thread.Sleep(TimeSpan.FromSeconds(30));
+                Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
+                Thread.Sleep(TimeSpan.FromMinutes(15));
             }
         }
 

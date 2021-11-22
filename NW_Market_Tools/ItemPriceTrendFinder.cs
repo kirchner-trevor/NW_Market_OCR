@@ -4,6 +4,7 @@ using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -72,14 +73,14 @@ namespace NW_Market_Tools
             itemDatabase.SetServer(server);
             itemDatabase.SaveDatabaseToDisk();
 
-            Console.WriteLine("Uploading item data...");
+            Trace.WriteLine($"Uploading item data for server {server}...");
             await s3Client.PutObjectAsync(new PutObjectRequest
             {
                 BucketName = "nwmarketdata",
                 Key = server + "/" + ITEM_TREND_DATA_FILE_NAME,
                 FilePath = itemDatabase.GetDataBasePathOnDisk(),
             });
-            Console.WriteLine("Item data uploaded!");
+            Trace.WriteLine($"Item data uploaded for server {server}!");
         }
 
         private PeriodicItemStats CreateDailyStats(IGrouping<string, MarketListing> listings, DateTime toDate, DateTime fromDate)

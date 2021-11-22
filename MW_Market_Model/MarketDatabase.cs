@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -76,7 +77,7 @@ namespace MW_Market_Model
         {
             Updated = DateTime.UtcNow;
 
-            Console.WriteLine("Saving fresh database to disk...");
+            Trace.WriteLine("Saving fresh database to disk...");
             MarketDatabase freshDatabase = new MarketDatabase
             {
                 Listings = this.Listings.Where(_ => _.IsFresh()).ToList(),
@@ -86,7 +87,7 @@ namespace MW_Market_Model
             Directory.CreateDirectory(Path.GetDirectoryName(GetDatabasePathOnDisk()));
             File.WriteAllText(GetDatabasePathOnDisk(), freshJson);
 
-            Console.WriteLine("Saving expired database to disk...");
+            Trace.WriteLine("Saving expired database to disk...");
             MarketDatabase expiredDatabase = new MarketDatabase
             {
                 Listings = this.Listings.Where(_ => !_.IsFresh()).ToList(),

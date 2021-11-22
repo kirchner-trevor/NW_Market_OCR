@@ -3,6 +3,7 @@ using Amazon.S3.Model;
 using MW_Market_Model;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -52,14 +53,14 @@ namespace NW_Market_Tools
         private async Task SaveAndUploadServerData()
         {
             configurationDatabase.SaveDatabaseToDisk();
-            Console.WriteLine("Uploading server data...");
+            Trace.WriteLine("Uploading server data...");
             await s3Client.PutObjectAsync(new PutObjectRequest
             {
                 BucketName = "nwmarketdata",
                 Key = configurationDatabase.GetDataBasePathOnServer(),
                 FilePath = configurationDatabase.GetDataBasePathOnDisk(),
             });
-            Console.WriteLine("Server data uploaded!");
+            Trace.WriteLine("Server data uploaded!");
         }
     }
 }

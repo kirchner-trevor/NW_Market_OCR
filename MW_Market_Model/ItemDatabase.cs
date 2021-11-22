@@ -33,7 +33,6 @@ namespace MW_Market_Model
 
         public void LoadDatabaseFromDisk()
         {
-            Trace.WriteLine($"Loading {DATABASE_FILE_NAME} from disk...");
             Contents = null;
             if (File.Exists(GetDataBasePathOnDisk()))
             {

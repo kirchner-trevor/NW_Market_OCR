@@ -5,6 +5,7 @@ using MW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -49,23 +50,24 @@ namespace NW_Market_Tools
 
             if (itemDatabase.Contents != null && itemDatabase.Contents.Updated > lastUpdateDate)
             {
-                Console.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
+                Trace.WriteLine($"Updating recipes for server {server}");
+                Trace.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
 
                 lastUpdateDate = itemDatabase.Contents.Updated;
 
                 NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY);
                 List<ItemsPageData> items = await nwdbInfoApiClient.ListItemsAsync();
-                Console.WriteLine($"Items: {items.Count}");
+                Trace.WriteLine($"Items: {items.Count}");
 
                 List<RecipesPageData> recipes = await nwdbInfoApiClient.ListRecipesAsync();
-                Console.WriteLine($"Recipes: {recipes.Count}");
+                Trace.WriteLine($"Recipes: {recipes.Count}");
 
                 List<RecipeData> recipeDetails = await nwdbInfoApiClient.ListDetailedRecipesAsync();
-                Console.WriteLine($"Recipe Details: {recipeDetails.Count}");
+                Trace.WriteLine($"Recipe Details: {recipeDetails.Count}");
 
                 AmazonS3Client s3Client = new AmazonS3Client(AccessKeyId, SecretAccessKey, RegionEndpoint.USEast2);
 
-                Console.WriteLine("\n== Finding Best Recipes To Craft! ==\n");
+                Trace.WriteLine("\n== Finding Best Recipes To Craft! ==\n");
 
                 List<CraftItemSuggestion> itemCraftingSuggestions = new List<CraftItemSuggestion>();
                 List<RecipeDataIngredient> unobtainableIngredients = new List<RecipeDataIngredient>();
@@ -77,7 +79,7 @@ namespace NW_Market_Tools
 
                         //if (!SHOW_ALL_RECIPES)
                         //{
-                        //    Console.WriteLine($"Checking {recipesToCraft.Count} recipes against {marketDatabase.Listings.Count} market listings...");
+                        //    Trace.WriteLine($"Checking {recipesToCraft.Count} recipes against {marketDatabase.Listings.Count} market listings...");
                         //}
 
                         RecipeCraftSummary mostCostEfficientRecipe = default;
@@ -90,8 +92,8 @@ namespace NW_Market_Tools
 
                             if (SHOW_ALL_RECIPES)
                             {
-                                WriteBuyCraftTreeToConsole(recipeSummary);
-                                Console.WriteLine($"");
+                                WriteBuyCraftTreeToTrace(recipeSummary);
+                                Trace.WriteLine($"");
                             }
 
                             foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(recipeSummary))
@@ -100,7 +102,7 @@ namespace NW_Market_Tools
 
                                 if (SHOW_ALL_RECIPES)
                                 {
-                                    Console.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
+                                    Trace.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
                                 }
 
                                 if ((targetTradeskill == default || tradeskillExp.Key == targetTradeskill) && efficiency > highestEfficiency)
@@ -112,7 +114,7 @@ namespace NW_Market_Tools
 
                             if (SHOW_ALL_RECIPES)
                             {
-                                Console.WriteLine($"{new string('-', 40)}");
+                                Trace.WriteLine($"{new string('-', 40)}");
                             }
 
 
@@ -128,27 +130,27 @@ namespace NW_Market_Tools
                             }
                         }
 
-                        Console.WriteLine($"\n== Best Recipe for {targetTradeskill} @ Lvl {targetTradeskillLevel}! ==\n");
-                        WriteBuyCraftTreeToConsole(mostCostEfficientRecipe);
-                        Console.WriteLine($"");
+                        Trace.WriteLine($"\n== Best Recipe for {targetTradeskill} @ Lvl {targetTradeskillLevel}! ==\n");
+                        WriteBuyCraftTreeToTrace(mostCostEfficientRecipe);
+                        Trace.WriteLine($"");
                         foreach (KeyValuePair<string, int> tradeskillExp in CalculateTradeskillExp(mostCostEfficientRecipe))
                         {
                             double efficiency = Math.Ceiling(tradeskillExp.Value / mostCostEfficientRecipe.MinimumCost);
-                            Console.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
+                            Trace.WriteLine($"{tradeskillExp.Key}: {tradeskillExp.Value} ({efficiency}xp / $)");
                         }
                     }
                 }
 
                 if (LIST_UNOBTAINABLE_ITEMS)
                 {
-                    Console.WriteLine($"\n== Unobtainable Items Found During Search! ==");
+                    Trace.WriteLine($"\n== Unobtainable Items Found During Search! ==");
                     foreach (string ingredient in unobtainableIngredients.OrderBy(_ => _.Type).Select(_ => _.Name).Distinct().OrderBy(_ => _))
                     {
-                        Console.WriteLine($"  {ingredient}");
+                        Trace.WriteLine($"  {ingredient}");
                     }
                 }
 
-                Console.WriteLine("Writing recipe suggestions to disk...");
+                Trace.WriteLine("Writing recipe suggestions to disk...");
                 string recipeSuggestionsPath = Path.Combine(DATA_DIRECTORY, server, "recipeSuggestions.json");
                 string json = JsonSerializer.Serialize(new RecipeSuggestions
                 {
@@ -161,20 +163,20 @@ namespace NW_Market_Tools
                         .ToList(),
                 });
                 File.WriteAllText(recipeSuggestionsPath, json);
-                Console.WriteLine("Recipe suggestions written to disk!");
+                Trace.WriteLine("Recipe suggestions written to disk!");
 
-                Console.WriteLine("Uploading recipe suggestions...");
+                Trace.WriteLine("Uploading recipe suggestions...");
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
                     BucketName = "nwmarketdata",
                     Key = server + "/recipeSuggestions.json",
                     FilePath = recipeSuggestionsPath,
                 });
-                Console.WriteLine("Recipe suggestions uploaded!");
+                Trace.WriteLine("Recipe suggestions uploaded!");
             }
             else
             {
-                Console.WriteLine($"Database has not updated since last run at {lastUpdateDate}, skipping...");
+                Trace.WriteLine($"Database has not updated since last run at {lastUpdateDate}, skipping...");
             }
 
         }
@@ -238,27 +240,27 @@ namespace NW_Market_Tools
             public List<BuyItemSuggestion> Buys { get; set; } = new List<BuyItemSuggestion>();
         }
 
-        private static void WriteBuyCraftTreeToConsole(RecipeCraftSummary recipeSummary, Dictionary<string, RecipeBuyItemAction> itemBuys = null, int currentIndent = 0)
+        private static void WriteBuyCraftTreeToTrace(RecipeCraftSummary recipeSummary, Dictionary<string, RecipeBuyItemAction> itemBuys = null, int currentIndent = 0)
         {
             if (itemBuys == null)
             {
                 itemBuys = CalculateItemsToBuy(recipeSummary);
             }
 
-            Console.WriteLine($"{new string(' ', currentIndent * 2)}(Craft) {recipeSummary.Recipe.Name} x{recipeSummary.CraftCount} (${Math.Round(recipeSummary.MinimumCost, 2)}ea)");
+            Trace.WriteLine($"{new string(' ', currentIndent * 2)}(Craft) {recipeSummary.Recipe.Name} x{recipeSummary.CraftCount} (${Math.Round(recipeSummary.MinimumCost, 2)}ea)");
             currentIndent++;
             foreach (RecipeBuyItemAction buy in recipeSummary.Buys)
             {
                 RecipeBuyItemAction itemBuy = itemBuys[buy.Name];
-                Console.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.ItemStats.GetLatest().AveragePrice}ea | {itemBuy.TotalAvailableAtLocation} @ {itemBuy.Location})");
+                Trace.WriteLine($"{new string(' ', currentIndent * 2)}(Buy)   {buy.Name} x{itemBuy.Quantity} (${itemBuy.ItemStats.GetLatest().AveragePrice}ea | {itemBuy.TotalAvailableAtLocation} @ {itemBuy.Location})");
             }
             foreach (RecipeDataIngredient unobtainable in recipeSummary.Unobtainable)
             {
-                Console.WriteLine($"{new string(' ', currentIndent * 2)}(????)  {unobtainable.Name} x{unobtainable.Quantity}");
+                Trace.WriteLine($"{new string(' ', currentIndent * 2)}(????)  {unobtainable.Name} x{unobtainable.Quantity}");
             }
             foreach (RecipeCraftSummary craft in recipeSummary.Crafts)
             {
-                WriteBuyCraftTreeToConsole(craft, itemBuys, currentIndent++);
+                WriteBuyCraftTreeToTrace(craft, itemBuys, currentIndent++);
             }
         }
 
