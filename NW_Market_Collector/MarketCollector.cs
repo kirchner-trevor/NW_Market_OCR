@@ -26,7 +26,7 @@ namespace NW_Market_Collector
         private const int OUT_OF_MARKET_DELAY = 5_000;
         private const int FILE_PROCESSING_DELAY = 30_000;
         private static int NEW_TEXT_CONTENT_THRESHOLD = 100;
-        private static Rectangle BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
+        private static Rectangle DEFAULT_BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
         private static Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
         private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
         private const string IMAGE_TEXT_CACHE_FILE_NAME = "imageTextCache.json";
@@ -34,6 +34,11 @@ namespace NW_Market_Collector
         private static Rectangle DEFAULT_MARKET_AREA = new Rectangle { X = 696, Y = 326, Width = 1130, Height = 730 };
         private static Point DEFAULT_SCREEN_SIZE = new Point(1920, 1080);
         private static Rectangle MarketArea = DEFAULT_MARKET_AREA;
+        private static ScreenAdjustmentParameters ScreenAdjustments = new ScreenAdjustmentParameters
+        {
+            Scale = 1f,
+            XPadding = 0
+        };
 
         private static volatile bool isRunning = true;
 
@@ -435,7 +440,7 @@ namespace NW_Market_Collector
 
                 path = Path.Combine(path, $"new.png");
 
-                using (Bitmap bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
+                using (Image bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
                 {
                     UpdateMarketAreaUsingWindowSize(bmpScreenshot.Width, bmpScreenshot.Height, configuration);
 
@@ -451,10 +456,9 @@ namespace NW_Market_Collector
             }
         }
 
-        private static void UpdateMarketAreaUsingWindowSize(int width, int height, ApplicationConfiguration configuration)
+        private static void UpdateMarketAreaUsingWindowSize(float width, float height, ApplicationConfiguration configuration)
         {
-            float xRatio = width / DEFAULT_SCREEN_SIZE.X;
-            float yRation = height / DEFAULT_SCREEN_SIZE.Y;
+            float yRatio = height / DEFAULT_SCREEN_SIZE.Y;
 
             if (configuration.CustomMarketArea.Width != 0 && configuration.CustomMarketArea.Height != 0)
             {
@@ -466,14 +470,34 @@ namespace NW_Market_Collector
                     Height = configuration.CustomMarketArea.Height,
                 };
             }
+            else if ((height / width) > (DEFAULT_SCREEN_SIZE.Y / DEFAULT_SCREEN_SIZE.X))
+            {
+                ScreenAdjustments = new ScreenAdjustmentParameters
+                {
+                    XPadding = (width - (yRatio * DEFAULT_SCREEN_SIZE.X)) / 2,
+                    Scale = yRatio,
+                };
+                MarketArea = ScreenAdjustments.Adjust(DEFAULT_MARKET_AREA);
+            }
             else
             {
-                MarketArea = new Rectangle
+                MarketArea = DEFAULT_MARKET_AREA;
+            }
+        }
+
+        private class ScreenAdjustmentParameters
+        {
+            public float XPadding;
+            public float Scale;
+
+            public Rectangle Adjust(Rectangle rect)
+            {
+                return new Rectangle
                 {
-                    X = (int)Math.Round(xRatio * DEFAULT_MARKET_AREA.X),
-                    Y = (int)Math.Round(yRation * DEFAULT_MARKET_AREA.Y),
-                    Width = (int)Math.Round(xRatio * DEFAULT_MARKET_AREA.Width),
-                    Height = (int)Math.Round(yRation * DEFAULT_MARKET_AREA.Height),
+                    X = (int)Math.Round(XPadding + (Scale * rect.X)),
+                    Y = (int)Math.Round(Scale * rect.Y),
+                    Width = (int)Math.Round(Scale * rect.Width),
+                    Height = (int)Math.Round(Scale * rect.Height),
                 };
             }
         }
@@ -489,19 +513,21 @@ namespace NW_Market_Collector
         {
             Trace.WriteLine($"Checking image for blue banner at '{path}'...");
 
+            Rectangle blueBannerSampleArea = ScreenAdjustments.Adjust(DEFAULT_BLUE_BANNER_SAMPLE_AREA);
+
             using (Bitmap myBitmap = new Bitmap(path))
             {
                 double totalDifference = 0f;
-                for (int x = 0; x < BLUE_BANNER_SAMPLE_AREA.Width; x++)
+                for (int x = 0; x < blueBannerSampleArea.Width; x++)
                 {
-                    for (int y = 0; y < BLUE_BANNER_SAMPLE_AREA.Height; y++)
+                    for (int y = 0; y < blueBannerSampleArea.Height; y++)
                     {
-                        Color color = myBitmap.GetPixel(BLUE_BANNER_SAMPLE_AREA.X + x, BLUE_BANNER_SAMPLE_AREA.Y + y);
+                        Color color = myBitmap.GetPixel(blueBannerSampleArea.X + x, blueBannerSampleArea.Y + y);
                         totalDifference += Math.Sqrt(Math.Pow(color.R - BLUE_BANNER_COLOR.R, 2) + Math.Pow(color.G - BLUE_BANNER_COLOR.G, 2) + Math.Pow(color.B - BLUE_BANNER_COLOR.B, 2));
                     }
                 }
 
-                double averageDifference = totalDifference / (BLUE_BANNER_SAMPLE_AREA.Width * BLUE_BANNER_SAMPLE_AREA.Height);
+                double averageDifference = totalDifference / (blueBannerSampleArea.Width * blueBannerSampleArea.Height);
 
                 if (averageDifference < BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT)
                 {
