@@ -3,11 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace NwdbInfoApi
 {
+    /// <summary>
+    /// Allows accessing information from nwdbinfo APIs only after getting allow-listed access by talking with owner.
+    /// The User-Agent string used is allow-listed access and is therefore considered some-what of a secret.
+    /// </summary>
     public class NwdbInfoApiClient
     {
         private const string ITEM_CACHE_FILE_NAME = "itemCache.json";
@@ -20,10 +25,12 @@ namespace NwdbInfoApi
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         };
         private string DataDirectory;
+        private string UserAgent;
 
-        public NwdbInfoApiClient(string dataDirectory)
+        public NwdbInfoApiClient(string dataDirectory, string userAgent = null)
         {
             DataDirectory = dataDirectory;
+            UserAgent = userAgent;
         }
 
         public async Task<List<ItemsPageData>> ListItemsAsync()
@@ -43,7 +50,51 @@ namespace NwdbInfoApi
                 return LoadFromJson<List<T>>(cacheFile);
             }
 
-            return new List<T>();
+            List<T> pages = new List<T>();
+            using (HttpClient httpClient = new HttpClient())
+            {
+                int pageCount = 1;
+
+                for (int page = 1; page <= pageCount; page++)
+                {
+                    Console.WriteLine($"Fetching page {page}...");
+                    ApiResponse<List<T>> content = await GetResource<List<T>>(httpClient, $"https://nwdb.info/db/{resource}/page/{page}.json");
+
+                    if (content.Success)
+                    {
+                        pages.AddRange(content.Data);
+                        pageCount = content.PageCount.Value;
+                        Console.WriteLine($"Added page to collection...");
+                    }
+                }
+            }
+
+            SaveAsJson(cacheFile, pages);
+
+            return pages;
+        }
+
+        private async Task<ApiResponse<T>> GetResource<T>(HttpClient httpClient, string url)
+        {
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(UserAgent))
+            {
+                request.Headers.Add("User-Agent", UserAgent);
+            }
+
+            HttpResponseMessage response = await httpClient.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string contentString = await response.Content.ReadAsStringAsync();
+                ApiResponse<T> content = JsonSerializer.Deserialize<ApiResponse<T>>(contentString, NWDB_JSON_SERIALIZER_OPTIONS);
+                return content;
+            }
+            else
+            {
+                Console.WriteLine($"Error fetching resource '{url}'... (${response.StatusCode}: {response.ReasonPhrase})");
+                return default;
+            }
         }
 
         // TODO : List Detailed Items (need info on containersWithItem to get salvaging data, need "IngredientCategories" to bucket generic items like "Refining Materials Tier 3" for buying categories of items)
@@ -55,7 +106,29 @@ namespace NwdbInfoApi
                 return LoadFromJson<List<RecipeData>>(RECIPE_DETAILS_CACHE_FILE_NAME);
             }
 
-            return new List<RecipeData>();
+            List<RecipesPageData> recipes = await ListRecipesAsync();
+
+            List<RecipeData> pages = new List<RecipeData>();
+            using (HttpClient httpClient = new HttpClient())
+            {
+                int count = 0;
+                foreach (RecipesPageData recipe in recipes)
+                {
+                    ApiResponse<RecipeData> content = await GetResource<RecipeData>(httpClient, $"https://nwdb.info/db/recipe/{recipe.Id}.json");
+
+                    if (content.Success)
+                    {
+                        pages.Add(content.Data);
+
+                        count++;
+                        Console.Write($"\rAdded Item {count}/{recipes.Count}                    ");
+                    }
+                }
+            }
+
+            SaveAsJson(RECIPE_DETAILS_CACHE_FILE_NAME, pages);
+
+            return pages;
         }
 
         private bool IsCached(string fileName)

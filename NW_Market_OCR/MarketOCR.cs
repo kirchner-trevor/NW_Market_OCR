@@ -59,10 +59,9 @@ namespace NW_Market_OCR
             };
 
             Trace.WriteLine($"Loading item database...");
-            itemsDatabase = await new NwdbInfoApiClient(DATA_DIRECTORY).ListItemsAsync();
+            NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY, config["nwdbinfo:UserAgent"]);
+            itemsDatabase = await nwdbInfoApiClient.ListItemsAsync();
             itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
-
-            Trace.WriteLine($"Trying to extract market data from New World on your primary monitor...");
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
@@ -87,62 +86,50 @@ namespace NW_Market_OCR
             {
                 ListObjectsResponse allMarketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
                 {
-                    BucketName = "nwmarketimages",
-                    MaxKeys = 1,
+                    BucketName = "nwmarketimages"
                 });
 
                 if (allMarketImages.S3Objects.Any())
                 {
-                    foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
+                    foreach (IGrouping<string, S3Object> serverMarketImages in allMarketImages.S3Objects.GroupBy(_ => _.Key.Split("/")?[0]))
                     {
-                        database.SetServer(server.Id);
+                        string server = serverMarketImages.Key;
+                        database.SetServer(server);
                         database.LoadDatabaseFromDisk();
 
-                        if (!itemsAddedToDatabase.ContainsKey(server.Id))
+                        if (!itemsAddedToDatabase.ContainsKey(server))
                         {
-                            itemsAddedToDatabase.Add(server.Id, 0);
-                            lastDatabaseUploadTime.Add(server.Id, database.Updated);
+                            itemsAddedToDatabase.Add(server, 0);
+                            lastDatabaseUploadTime.Add(server, database.Updated);
                         }
 
-                        ListObjectsResponse marketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
-                        {
-                            BucketName = "nwmarketimages",
-                            Prefix = server.Id + "/",
-                        });
 
-                        if (marketImages.S3Objects.Any())
+                        Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
+                        foreach (S3Object nwMarketImageObject in serverMarketImages)
                         {
-                            Trace.WriteLine($"Extracting market data from {marketImages.S3Objects.Count} images...");
-                            foreach (S3Object nwMarketImageObject in marketImages.S3Objects)
+                            GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
                             {
-                                GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
-                                {
-                                    BucketName = nwMarketImageObject.BucketName,
-                                    Key = nwMarketImageObject.Key,
-                                });
+                                BucketName = nwMarketImageObject.BucketName,
+                                Key = nwMarketImageObject.Key,
+                            });
 
-                                string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                                await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                                DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
-                                string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
-                                Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
+                            string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                            await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                            DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
+                            string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
+                            Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
 
-                                UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+                            UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
-                                await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
+                            await TryUploadDatabaseRateLimited(s3Client, database, server);
 
-                                BackupImageLocally(nwMarketImage, processedPath);
+                            BackupImageLocally(nwMarketImage, processedPath);
 
-                                await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                                {
-                                    BucketName = nwMarketImageObject.BucketName,
-                                    Key = nwMarketImageObject.Key,
-                                });
-                            }
-                        }
-                        else
-                        {
-                            await TryUploadDatabaseRateLimited(s3Client, database, server.Id);
+                            await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                            {
+                                BucketName = nwMarketImageObject.BucketName,
+                                Key = nwMarketImageObject.Key,
+                            });
                         }
                     }
                 }
