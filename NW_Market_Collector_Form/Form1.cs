@@ -1,13 +1,6 @@
 ﻿using MW_Market_Model;
 using NW_Market_Collector;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace NW_Market_Collector_Form
@@ -27,7 +20,7 @@ namespace NW_Market_Collector_Form
 
         private void buttonToStart_Click(object sender, EventArgs e)
         {
-            MarketCollector.Start(new MarketCollector.ApplicationConfiguration
+            MarketCollector.Start(new ApplicationConfiguration
             {
                 Credentials = formProperties.Credentials,
                 Server = formProperties.Server,
