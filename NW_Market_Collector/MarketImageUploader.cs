@@ -17,6 +17,7 @@ using Tesseract;
 
 namespace NW_Market_Collector
 {
+    // TODO : Bundle into an archive of X files and a manifest json before uploading to reduce the number of upload requests
     public class MarketImageUploader : IDisposable
     {
         private int NEW_TEXT_CONTENT_THRESHOLD = 100;
