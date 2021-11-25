@@ -60,7 +60,17 @@ namespace NW_Market_Collector
         {
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
-            DateTime fileCreationTime = File.GetCreationTimeUtc(path);
+            string fileNamePath = Path.GetFileNameWithoutExtension(path);
+            DateTime fileCreationTime;
+            if (long.TryParse(fileNamePath.Split("_")?[1] ?? "", out long fileNameTime))
+            {
+                fileCreationTime = DateTime.FromFileTimeUtc(fileNameTime);
+            }
+            else
+            {
+                fileCreationTime = File.GetCreationTimeUtc(path);
+            }
+
             string processedPath = CleanInputImage(path);
             string textContent = CleanTextContent(ExtractTextContent(processedPath));
 

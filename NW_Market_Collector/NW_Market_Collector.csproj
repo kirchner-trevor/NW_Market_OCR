@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.4" />
     <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
+    <PackageReference Include="OpenCvSharp4.Windows" Version="4.5.3.20210817" />
     <PackageReference Include="Tesseract" Version="4.1.1" />
     <PackageReference Include="Tesseract.Drawing" Version="4.1.1" />
   </ItemGroup>

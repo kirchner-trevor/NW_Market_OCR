@@ -7,6 +7,7 @@ namespace NW_Market_Collector
         public string Credentials { get; set; }
         public string Server { get; set; }
         public string User { get; set; }
+        public CollectorMode? Mode { get; set; } = CollectorMode.AutoScreenShot;
         public ConfigurationRectangle CustomMarketArea { get; set; }
 
         public string GetAccessKeyId()
@@ -74,5 +75,11 @@ namespace NW_Market_Collector
 
             return screenAdjustments;
         }
+    }
+
+    public enum CollectorMode
+    {
+        AutoScreenShot = 0,
+        Video = 1,
     }
 }

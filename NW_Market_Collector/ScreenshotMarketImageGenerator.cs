@@ -5,23 +5,18 @@ using System.IO;
 
 namespace NW_Market_Collector
 {
-    public class ScreenshotMarketImageGenerator
+    public class ScreenshotMarketImageGenerator : MarketImageGenerator
     {
-        private Rectangle DEFAULT_BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
-        private Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
-        private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
-        private ScreenAdjustmentParameters screenAdjustments = new ScreenAdjustmentParameters();
-
-        private readonly ApplicationConfiguration Configuration;
         private readonly ConsoleHUDWriter ConsoleHUD;
+        private readonly MarketImageDetector MarketImageDetector;
 
         public ScreenshotMarketImageGenerator(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter)
         {
-            Configuration = configuration;
             ConsoleHUD = consoleHUDWriter;
+            MarketImageDetector = new MarketImageDetector(configuration);
         }
 
-        public bool CaptureMarketImage()
+        public bool TryCaptureMarketImage()
         {
             Trace.WriteLine("Checking to see if you're at the market...");
 
@@ -33,7 +28,7 @@ namespace NW_Market_Collector
                 return false;
             }
 
-            if (ImageContainsBlueBanner(path))
+            if (MarketImageDetector.ImageContainsBlueBanner(path))
             {
                 Trace.WriteLine("Found market interface capturing market listings... ");
                 ConsoleHUD.CollectorStatus = "Capturing Market Data";
@@ -63,8 +58,6 @@ namespace NW_Market_Collector
 
                 using (Image bmpScreenshot = WindowPrinterV2.PrintWindow(newWorldWindow))
                 {
-                    screenAdjustments = Configuration.GetScreenAdjustmentsForWindow(bmpScreenshot.Width, bmpScreenshot.Height);
-
                     bmpScreenshot.Save(path, System.Drawing.Imaging.ImageFormat.Png);
                 }
 
@@ -75,34 +68,6 @@ namespace NW_Market_Collector
                 Trace.WriteLine("Cannot find window 'New World'...");
                 return null;
             }
-        }
-
-        private bool ImageContainsBlueBanner(string path)
-        {
-            Trace.WriteLine($"Checking image for blue banner at '{path}'...");
-
-            Rectangle blueBannerSampleArea = screenAdjustments.Adjust(DEFAULT_BLUE_BANNER_SAMPLE_AREA);
-
-            using (Bitmap myBitmap = new Bitmap(path))
-            {
-                double totalDifference = 0f;
-                for (int x = 0; x < blueBannerSampleArea.Width; x++)
-                {
-                    for (int y = 0; y < blueBannerSampleArea.Height; y++)
-                    {
-                        Color color = myBitmap.GetPixel(blueBannerSampleArea.X + x, blueBannerSampleArea.Y + y);
-                        totalDifference += Math.Sqrt(Math.Pow(color.R - BLUE_BANNER_COLOR.R, 2) + Math.Pow(color.G - BLUE_BANNER_COLOR.G, 2) + Math.Pow(color.B - BLUE_BANNER_COLOR.B, 2));
-                    }
-                }
-
-                double averageDifference = totalDifference / (blueBannerSampleArea.Width * blueBannerSampleArea.Height);
-
-                if (averageDifference < BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT)
-                {
-                    return true;
-                }
-            }
-            return false;
         }
 
         private string MoveNewImageToCaptures(string newPath)

@@ -39,6 +39,7 @@ namespace NW_Market_Collector
             configuration.Credentials = args.Length >= 1 ? args[0] : null;
             configuration.Server = args.Length >= 2 ? args[1] : null;
             configuration.User = args.Length >= 3 ? args[2] : null;
+            configuration.Mode = args.Length >= 4 ? GetMode(args[3]) : null;
 
             Console.WriteLine("Welcome to the NW Market Collector!\n");
 
@@ -65,6 +66,12 @@ namespace NW_Market_Collector
                 {
                     Console.Write("Username (Optional): ");
                     configuration.User = Console.ReadLine();
+                }
+
+                if (configuration?.Mode == null)
+                {
+                    Console.Write("Mode (AutoScreenShot, Video): ");
+                    configuration.Mode = GetMode(Console.ReadLine());
                 }
             }
 
@@ -98,34 +105,39 @@ namespace NW_Market_Collector
             Start(configuration);
         }
 
+        private static CollectorMode GetMode(string mode)
+        {
+            return mode != null && Enum.TryParse(mode, out CollectorMode collectorMode) ? collectorMode : CollectorMode.AutoScreenShot;
+        }
+
         public static void Start(ApplicationConfiguration configuration)
         {
-            ScreenshotMarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(configuration, ConsoleHUD);
-            MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD);
-
             Thread processThread = new Thread(async () =>
             {
-                while (isRunning)
+                using (MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD))
                 {
-                    DateTime startTime = DateTime.UtcNow;
+                    while (isRunning)
+                    {
+                        DateTime startTime = DateTime.UtcNow;
 
-                    await marketImageUploader.ProcessMarketImages();
+                        await marketImageUploader.ProcessMarketImages();
 
-                    ConsoleHUD.ProcessorStatus = "Waiting For More Files";
-                    Trace.WriteLine("Waiting for more files... ");
-                    WaitForTotalTimeToPass(startTime, FILE_PROCESSING_DELAY);
+                        ConsoleHUD.ProcessorStatus = "Waiting For More Files";
+                        Trace.WriteLine("Waiting for more files... ");
+                        WaitForTotalTimeToPass(startTime, FILE_PROCESSING_DELAY);
+                    }
                 }
             });
 
-            try
+            Thread autoScreenshotThread = new Thread(() =>
             {
-                processThread.Start();
+                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(configuration, ConsoleHUD);
 
                 while (isRunning)
                 {
                     DateTime startTime = DateTime.UtcNow;
 
-                    bool capturedMarketImage = marketImageGenerator.CaptureMarketImage();
+                    bool capturedMarketImage = marketImageGenerator.TryCaptureMarketImage();
 
                     if (capturedMarketImage)
                     {
@@ -134,6 +146,29 @@ namespace NW_Market_Collector
                     else
                     {
                         WaitForTotalTimeToPass(startTime, OUT_OF_MARKET_DELAY);
+                    }
+                }
+            });
+
+            try
+            {
+                processThread.Start();
+
+                if (configuration.Mode == CollectorMode.AutoScreenShot)
+                {
+                    autoScreenshotThread.Start();
+                    autoScreenshotThread.Join();
+                }
+                else if (configuration.Mode == CollectorMode.Video)
+                {
+                    MarketImageGenerator marketImageGenerator = new VideoFileMarketImageGenerator(new MarketImageDetector(configuration));
+
+                    marketImageGenerator.TryCaptureMarketImage();
+
+                    string[] files;
+                    while ((files = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "captures"), "market_*.png")).Any())
+                    {
+                        Thread.Sleep(TimeSpan.FromSeconds(5));
                     }
                 }
             }
@@ -149,7 +184,6 @@ namespace NW_Market_Collector
             finally
             {
                 processThread.Join();
-                marketImageUploader.Dispose();
             }
             Console.Write("Press enter to exit");
             Console.ReadLine();

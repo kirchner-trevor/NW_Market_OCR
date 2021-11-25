@@ -201,8 +201,8 @@ namespace NW_Market_OCR
 
             foreach (OcrTextArea word in words)
             {
-                // Find the group within 100 of the words Y value
-                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < MarketColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
+                // Find the group within N of the words Y value
+                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
                 if (wordBucketsByHeight.ContainsKey(yGroupKey))
                 {
                     wordBucketsByHeight[yGroupKey].Add(word);
@@ -458,14 +458,14 @@ namespace NW_Market_OCR
             private static Point DEFAULT_SIZE = new Point(1130, 730);
 
             // Iron Ocr Coordinates
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 300);
-            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(301, 400);
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 315);
+            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(316, 400);
             // Tier 401, 460
             // GS 461, 530
             private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(815, 875);
             private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(876, 940);
             private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(941, 1005);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1005, 1130);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1006, 1130);
 
             public Range NAME_TEXT_X_RANGE { get; private set; }
             public Range PRICE_TEXT_X_RANGE { get; private set; }
@@ -474,7 +474,8 @@ namespace NW_Market_OCR
             public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
             public Range LOCATION_TEXT_X_RANGE { get; private set; }
 
-            public static int WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
+            public static int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
+            public int WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
 
             public MarketColumnMappings()
             {
@@ -484,7 +485,9 @@ namespace NW_Market_OCR
             public void SetSize(Point size)
             {
                 float xRatio = size.X / DEFAULT_SIZE.X;
+                float yRatio = size.Y / DEFAULT_SIZE.Y;
 
+                WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * yRatio);
                 NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
                 PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
                 AVAILABLE_TEXT_X_RANGE = DEFAULT_AVAILABLE_TEXT_X_RANGE * xRatio;
@@ -496,12 +499,12 @@ namespace NW_Market_OCR
 
         private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath, DateTime captureTime)
         {
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
-
             using (Image image = Image.FromFile(processedPath))
             {
                 ColumnMappings.SetSize(new Point(image.Width, image.Height));
             }
+
+            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
 
             string batchId = Guid.NewGuid().ToString("D");
 
