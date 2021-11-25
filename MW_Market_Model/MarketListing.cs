@@ -37,7 +37,7 @@ namespace MW_Market_Model
 
         public override string ToString()
         {
-            return $"({Latest.Time}) {Name} ${Price} x{Latest.Available} r{Latest.TimeRemaining.TotalHours} @{Location}";
+            return $"({Latest.Time}) {OriginalName} ${OriginalPrice} x{Latest.OriginalAvailable} r{Latest.OriginalTimeRemaining} @{OriginalLocation}";
         }
 
         public MarketListing MergeIntoThis(MarketListing other)

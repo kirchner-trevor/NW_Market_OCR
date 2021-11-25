@@ -221,6 +221,7 @@ namespace NW_Market_OCR
 
         private static List<OcrTextArea> RunTesseractOcr(string processedPath)
         {
+            tesseractEngineForDecimals.SetVariable("whitelist", ".,0123456789");
             List<OcrTextArea> textAreas = new List<OcrTextArea>();
             textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_DECIMALS, tesseractEngineForDecimals));
             textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_LETTERS, tesseractOcrForLetters));
@@ -453,22 +454,18 @@ namespace NW_Market_OCR
 
         private class MarketColumnMappings
         {
-            // Ocr Units / Ocr Units
-            private static Point IRON_OCR_SIZE = new Point(2648, 1711);
-            private static Point TESSERACT_OCR_SIZE = new Point(1130, 730);
-            private static float X_OCR_RATIO = TESSERACT_OCR_SIZE.X / (IRON_OCR_SIZE.X * 1f);
-
             // Pixels
             private static Point DEFAULT_SIZE = new Point(1130, 730);
 
             // Iron Ocr Coordinates
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(8, 754);
-            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(758, 1132);
-            // GS 1133
-            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(1927, 2074);
-            private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(2075, 2236);
-            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(2237, 2385);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(2386, 2648);
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 300);
+            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(301, 400);
+            // Tier 401, 460
+            // GS 461, 530
+            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(815, 875);
+            private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(876, 940);
+            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(941, 1005);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1005, 1130);
 
             public Range NAME_TEXT_X_RANGE { get; private set; }
             public Range PRICE_TEXT_X_RANGE { get; private set; }
@@ -477,8 +474,7 @@ namespace NW_Market_OCR
             public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
             public Range LOCATION_TEXT_X_RANGE { get; private set; }
 
-            private static int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 100;
-            public static int WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * X_OCR_RATIO);
+            public static int WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
 
             public MarketColumnMappings()
             {
@@ -487,8 +483,7 @@ namespace NW_Market_OCR
 
             public void SetSize(Point size)
             {
-                // None * Pixels / Ocr Units
-                float xRatio = (X_OCR_RATIO * size.X) / DEFAULT_SIZE.X;
+                float xRatio = size.X / DEFAULT_SIZE.X;
 
                 NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
                 PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
