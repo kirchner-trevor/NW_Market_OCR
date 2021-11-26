@@ -131,6 +131,12 @@ namespace NW_Market_OCR
                                 Key = nwMarketImageObject.Key,
                             });
                         }
+
+                        if (itemsAddedToDatabase[server] > 0)
+                        {
+                            Trace.WriteLine($"Found un-uploaded items after processing all images, forcing upload.");
+                            await TryUploadDatabaseRateLimited(s3Client, database, server, force: true);
+                        }
                     }
                 }
                 else
@@ -168,10 +174,10 @@ namespace NW_Market_OCR
         private static Dictionary<string, DateTime> lastDatabaseUploadTime = new Dictionary<string, DateTime>();
         private static Dictionary<string, int> itemsAddedToDatabase = new Dictionary<string, int>();
 
-        public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database, string server)
+        public static async Task TryUploadDatabaseRateLimited(AmazonS3Client s3Client, MarketDatabase database, string server, bool force = false)
         {
             TimeSpan timeSinceLastUpload = DateTime.UtcNow - lastDatabaseUploadTime[server];
-            if ((itemsAddedToDatabase[server] >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay) || (itemsAddedToDatabase[server] > 0 && timeSinceLastUpload > maxDatabaseUploadDelay))
+            if (force || (itemsAddedToDatabase[server] >= databaseUploadItemThreshold && timeSinceLastUpload > databaseUploadDelay) || (itemsAddedToDatabase[server] > 0 && timeSinceLastUpload > maxDatabaseUploadDelay))
             {
                 PutObjectResponse putResponse = await s3Client.PutObjectAsync(new PutObjectRequest
                 {
