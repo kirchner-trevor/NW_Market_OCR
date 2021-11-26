@@ -221,11 +221,31 @@ export default {
                                 </b-card-text>
                             </b-card-body>
                             <b-tabs pills card end>
-                                <b-tab title="Average" active><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.AveragePrice).reverse()" smooth></trend></b-tab>
-                                <b-tab title="Min"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.MinPrice).reverse()" smooth></trend></b-tab>
-                                <b-tab title="Max"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.MaxPrice).reverse()" smooth></trend></b-tab>
-                                <b-tab title="Available"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.TotalAvailable).reverse()" smooth></trend></b-tab>
-                                <b-tab title="Market"><trend :data="itemTrend.DailyStats.map(dailyStat => dailyStat.TotalMarket).reverse()" smooth></trend></b-tab>
+                                <b-tab title="Average" active>
+                                    <la-cartesian class="mx-auto" :width="500" :padding="24" :data="itemTrend.DailyStats.map(dailyStat => ({ value: round(dailyStat.AveragePrice) })).reverse()">
+                                        <la-line dot curve show-value prop="value"></la-line>
+                                    </la-cartesian>
+                                </b-tab>
+                                <b-tab title="Min">
+                                    <la-cartesian class="mx-auto" :width="500" :padding="24" :data="itemTrend.DailyStats.map(dailyStat => ({ value: round(dailyStat.MinPrice) })).reverse()">
+                                        <la-line dot curve show-value prop="value"></la-line>
+                                    </la-cartesian>
+                                </b-tab>
+                                <b-tab title="Max">
+                                    <la-cartesian class="mx-auto" :width="500" :padding="24" :data="itemTrend.DailyStats.map(dailyStat => ({ value: round(dailyStat.MaxPrice) })).reverse()">
+                                        <la-line dot curve show-value prop="value"></la-line>
+                                    </la-cartesian>
+                                </b-tab>
+                                <b-tab title="Available">
+                                    <la-cartesian class="mx-auto" :width="500" :padding="24" :data="itemTrend.DailyStats.map(dailyStat => ({ value: round(dailyStat.TotalAvailable) })).reverse()">
+                                        <la-line dot curve show-value prop="value"></la-line>
+                                    </la-cartesian>
+                                </b-tab>
+                                <b-tab title="Market">
+                                    <la-cartesian class="mx-auto" :width="500" :padding="24" :data="itemTrend.DailyStats.map(dailyStat => ({ value: round(dailyStat.TotalMarket) })).reverse()">
+                                        <la-line dot curve show-value prop="value"></la-line>
+                                    </la-cartesian>
+                                </b-tab>
                             </b-tabs>
                         </b-card>
                     </b-card-group>
@@ -388,7 +408,11 @@ export default {
             return parseInt(parts[0]) * 24 + parseInt(smallParts[0]);
         },
         round(number) {
-            return Math.round(number * 100) / 100;
+            if (number < 10) {
+                return Math.round((number + Number.EPSILON) * 100) / 100;
+            } else {
+                return Math.round(number + Number.EPSILON);
+            }
         },
         changeServer(server) {
             if (this.selectedServerId !== server && this.configurationData.ServerList.some(validServer => validServer.Id === server))
