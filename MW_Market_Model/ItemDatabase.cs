@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-namespace MW_Market_Model
+namespace NW_Market_Model
 {
     public class ItemDatabase
     {

@@ -2,7 +2,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
-using MW_Market_Model;
+using NW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
@@ -190,7 +190,7 @@ namespace NW_Market_OCR
             }
             else
             {
-                Trace.WriteLine($"Skipping database upload for {server}. Items Added: {itemsAddedToDatabase[server]} >= {databaseUploadItemThreshold} and Time Passed: {(int)timeSinceLastUpload.TotalMinutes} minutes >= {databaseUploadDelay.TotalMinutes} minutes");
+                Trace.WriteLine($"Skipping database upload for {server}. Items Added: {itemsAddedToDatabase[server]} >= {databaseUploadItemThreshold} and Time Passed: {Math.Round(timeSinceLastUpload.TotalMinutes, 2)} minutes >= {databaseUploadDelay.TotalMinutes} minutes");
             }
         }
 

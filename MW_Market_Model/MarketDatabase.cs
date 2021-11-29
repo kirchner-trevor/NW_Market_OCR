@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-namespace MW_Market_Model
+namespace NW_Market_Model
 {
     [Serializable]
     public class MarketDatabase
@@ -80,8 +80,8 @@ namespace MW_Market_Model
             Trace.WriteLine("Saving fresh database to disk...");
             MarketDatabase freshDatabase = new MarketDatabase
             {
-                Listings = this.Listings.Where(_ => _.IsFresh()).ToList(),
-                Updated = this.Updated,
+                Listings = Listings.Where(_ => _.IsFresh()).ToList(),
+                Updated = Updated,
             };
             string freshJson = JsonSerializer.Serialize(freshDatabase, JSON_SERIALIZER_OPTIONS);
             Directory.CreateDirectory(Path.GetDirectoryName(GetDatabasePathOnDisk()));
@@ -90,8 +90,8 @@ namespace MW_Market_Model
             Trace.WriteLine("Saving expired database to disk...");
             MarketDatabase expiredDatabase = new MarketDatabase
             {
-                Listings = this.Listings.Where(_ => !_.IsFresh()).ToList(),
-                Updated = this.Updated,
+                Listings = Listings.Where(_ => !_.IsFresh()).ToList(),
+                Updated = Updated,
             };
             string expiredJson = JsonSerializer.Serialize(expiredDatabase, JSON_SERIALIZER_OPTIONS);
             Directory.CreateDirectory(Path.GetDirectoryName(GetDatabaseExpiredPathOnDisk()));

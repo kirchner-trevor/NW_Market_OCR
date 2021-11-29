@@ -3,36 +3,35 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Fastenshtein;
+using NW_Image_Analysis;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using Tesseract;
 
 namespace NW_Market_Collector
 {
     // TODO : Bundle into an archive of X files and a manifest json before uploading to reduce the number of upload requests
-    public class MarketImageUploader : IDisposable
+    public class MarketImageUploader
     {
         private int NEW_TEXT_CONTENT_THRESHOLD = 100;
-
         private readonly Regex whitespaceRegex = new Regex(@"\s+");
-        private TesseractEngine tesseractEngine = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata"), "eng", EngineMode.Default);
         private HashSet<string> previousTextContents;
 
         private readonly ApplicationConfiguration Configuration;
         private readonly ConsoleHUDWriter ConsoleHUD;
+        private readonly MarketImageDetector MarketImageDetector;
 
-        public MarketImageUploader(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter)
+        public MarketImageUploader(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector)
         {
             Configuration = configuration;
             ConsoleHUD = consoleHUDWriter;
+            MarketImageDetector = marketImageDetector;
         }
 
         public async Task ProcessMarketImages()
@@ -60,19 +59,10 @@ namespace NW_Market_Collector
         {
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
-            string fileNamePath = Path.GetFileNameWithoutExtension(path);
-            DateTime fileCreationTime;
-            if (long.TryParse(fileNamePath.Split("_")?[1] ?? "", out long fileNameTime))
-            {
-                fileCreationTime = DateTime.FromFileTimeUtc(fileNameTime);
-            }
-            else
-            {
-                fileCreationTime = File.GetCreationTimeUtc(path);
-            }
+            DateTime fileCreationTime = FileFormatMetadata.GetSourceDateFromFile(path);
 
-            string processedPath = CleanInputImage(path);
-            string textContent = CleanTextContent(ExtractTextContent(processedPath));
+            string processedPath = MarketImageDetector.CleanInputImage(path, Configuration.IsCustomMarketArea() ? (Rectangle)Configuration.CustomMarketArea : null);
+            string textContent = CleanTextContent(MarketImageDetector.ExtractTextContent(processedPath));
 
             if (IsTextContentNew(textContent, NEW_TEXT_CONTENT_THRESHOLD))
             {
@@ -95,59 +85,6 @@ namespace NW_Market_Collector
             {
                 ConsoleHUD.LatestTextBlob = "(Old) " + textContent;
                 Trace.WriteLine($"Skipping upload of existing text content...");
-            }
-        }
-
-        private string CleanInputImage(string path)
-        {
-            string fileDirectory = Path.GetDirectoryName(path);
-            string processedPath = Path.Combine(fileDirectory, "processed.png");
-
-            Trace.WriteLine($"Cleaning image at '{path}'...");
-
-            using (Bitmap original = new Bitmap(path))
-            {
-                Rectangle marketArea = Configuration.GetMarketArea();
-                if (!Configuration.IsCustomMarketArea())
-                {
-                    marketArea = Configuration.GetScreenAdjustmentsForWindow(original.Width, original.Height).Adjust(marketArea);
-                }
-
-                using (Bitmap cropped = original.Clone(marketArea, PixelFormat.Format32bppArgb))
-                {
-                    const float limit = 0.2f;
-                    for (int i = 0; i < cropped.Width; i++)
-                    {
-                        for (int j = 0; j < cropped.Height; j++)
-                        {
-                            Color c = cropped.GetPixel(i, j);
-                            if (c.GetBrightness() > limit)
-                            {
-                                cropped.SetPixel(i, j, Color.Black);
-                            }
-                            else
-                            {
-                                cropped.SetPixel(i, j, Color.White);
-                            }
-                        }
-                    }
-
-                    cropped.Save(processedPath);
-                }
-            }
-
-            Trace.WriteLine($"Cleaned image saved to '{processedPath}'");
-            return processedPath;
-        }
-
-        private string ExtractTextContent(string processedPath)
-        {
-            using (Pix image = Pix.LoadFromFile(processedPath))
-            {
-                using (Page page = tesseractEngine.Process(image))
-                {
-                    return page.GetText();
-                }
             }
         }
 
@@ -207,37 +144,6 @@ namespace NW_Market_Collector
             //File.WriteAllText(IMAGE_TEXT_CACHE_FILE_NAME, writeJson);
 
             return true;
-        }
-
-        private bool disposedValue;
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    tesseractEngine?.Dispose();
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
-                disposedValue = true;
-            }
-        }
-
-        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        // ~MarketCollector()
-        // {
-        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        //     Dispose(disposing: false);
-        // }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
         }
     }
 }

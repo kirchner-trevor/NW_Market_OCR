@@ -1,4 +1,5 @@
-﻿using System;
+﻿using NW_Image_Analysis;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -10,10 +11,10 @@ namespace NW_Market_Collector
         private readonly ConsoleHUDWriter ConsoleHUD;
         private readonly MarketImageDetector MarketImageDetector;
 
-        public ScreenshotMarketImageGenerator(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter)
+        public ScreenshotMarketImageGenerator(ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector)
         {
             ConsoleHUD = consoleHUDWriter;
-            MarketImageDetector = new MarketImageDetector(configuration);
+            MarketImageDetector = marketImageDetector;
         }
 
         public bool TryCaptureMarketImage()

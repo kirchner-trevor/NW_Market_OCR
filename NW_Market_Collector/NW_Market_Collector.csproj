@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net5.0-windows</TargetFramework>
   </PropertyGroup>
-
+  
   <ItemGroup>
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>
@@ -12,13 +12,11 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="3.7.4" />
     <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
-    <PackageReference Include="OpenCvSharp4.Windows" Version="4.5.3.20210817" />
-    <PackageReference Include="Tesseract" Version="4.1.1" />
-    <PackageReference Include="Tesseract.Drawing" Version="4.1.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
+    <ProjectReference Include="..\MW_Market_Model\NW_Market_Model.csproj" />
+    <ProjectReference Include="..\NW_Image_Analysis\NW_Image_Analysis.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,9 +26,6 @@
     <None Update="README.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="tessdata\eng.traineddata">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
-
+  
 </Project>

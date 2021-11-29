@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
-namespace MW_Market_Model
+namespace NW_Market_Model
 {
     public class ConfigurationDatabase
     {
@@ -46,7 +46,7 @@ namespace MW_Market_Model
         {
             return Path.Combine(DataDirectory, DATABASE_FILE_NAME);
         }
-        
+
         public string GetDataBasePathOnServer()
         {
             return DATABASE_FILE_NAME;

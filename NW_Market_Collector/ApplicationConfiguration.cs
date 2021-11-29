@@ -30,50 +30,14 @@ namespace NW_Market_Collector
             public int Y { get; set; }
             public int Width { get; set; }
             public int Height { get; set; }
-        }
 
-        private Rectangle DEFAULT_MARKET_AREA = new Rectangle { X = 696, Y = 326, Width = 1130, Height = 730 };
-        private Point DEFAULT_SCREEN_SIZE = new Point(1920, 1080);
-
-        public Rectangle GetMarketArea()
-        {
-            Rectangle marketArea = DEFAULT_MARKET_AREA;
-
-            if (IsCustomMarketArea())
-            {
-                marketArea = new Rectangle
-                {
-                    X = CustomMarketArea.X,
-                    Y = CustomMarketArea.Y,
-                    Width = CustomMarketArea.Width,
-                    Height = CustomMarketArea.Height,
-                };
-            }
-
-            return marketArea;
+            public static implicit operator ConfigurationRectangle(Rectangle r) => new ConfigurationRectangle { X = r.X, Y = r.Y, Height = r.Height, Width = r.Width };
+            public static explicit operator Rectangle(ConfigurationRectangle r) => new Rectangle { X = r.X, Y = r.Y, Height = r.Height, Width = r.Width };
         }
 
         public bool IsCustomMarketArea()
         {
             return CustomMarketArea.Width != 0 && CustomMarketArea.Height != 0;
-        }
-
-        public ScreenAdjustmentParameters GetScreenAdjustmentsForWindow(float width, float height)
-        {
-            ScreenAdjustmentParameters screenAdjustments = new ScreenAdjustmentParameters();
-
-            float yRatio = height / DEFAULT_SCREEN_SIZE.Y;
-
-            if ((height / width) > (DEFAULT_SCREEN_SIZE.Y / DEFAULT_SCREEN_SIZE.X))
-            {
-                screenAdjustments = new ScreenAdjustmentParameters
-                {
-                    XPadding = (width - (yRatio * DEFAULT_SCREEN_SIZE.X)) / 2,
-                    Scale = yRatio,
-                };
-            }
-
-            return screenAdjustments;
         }
     }
 

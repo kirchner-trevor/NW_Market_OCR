@@ -2,7 +2,19 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net5.0-windows</TargetFramework>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
+    <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
+    <PackageReference Include="TwitchLib" Version="3.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MW_Market_Model\NW_Market_Model.csproj" />
+    <ProjectReference Include="..\NW_Image_Analysis\NW_Image_Analysis.csproj" />
+    <ProjectReference Include="..\StreamApi\StreamApi.csproj" />
+  </ItemGroup>
 
 </Project>

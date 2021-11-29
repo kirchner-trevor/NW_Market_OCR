@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MW_Market_Model\MW_Market_Model.csproj" />
+    <ProjectReference Include="..\MW_Market_Model\NW_Market_Model.csproj" />
     <ProjectReference Include="..\NwdbInfoApi\NwdbInfoApi.csproj" />
   </ItemGroup>
 

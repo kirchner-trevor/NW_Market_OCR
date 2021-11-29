@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Serialization;
 
-namespace MW_Market_Model
+namespace NW_Market_Model
 {
     [Serializable]
     public class MarketListing
@@ -12,7 +12,7 @@ namespace MW_Market_Model
         public MarketListing()
         {
             ListingId = Guid.NewGuid().ToString("D");
-            Instances = new List<MarketListingInstance>{ new MarketListingInstance() };
+            Instances = new List<MarketListingInstance> { new MarketListingInstance() };
         }
 
         public string ListingId { get; set; }

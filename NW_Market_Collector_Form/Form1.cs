@@ -1,5 +1,5 @@
-﻿using MW_Market_Model;
-using NW_Market_Collector;
+﻿using NW_Market_Collector;
+using NW_Market_Model;
 using System;
 using System.Windows.Forms;
 

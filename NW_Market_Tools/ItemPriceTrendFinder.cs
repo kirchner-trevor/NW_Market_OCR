@@ -1,6 +1,6 @@
 ﻿using Amazon.S3;
 using Amazon.S3.Model;
-using MW_Market_Model;
+using NW_Market_Model;
 using NwdbInfoApi;
 using System;
 using System.Collections.Generic;

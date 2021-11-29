@@ -1,62 +1,57 @@
-﻿using OpenCvSharp;
+﻿using NW_Image_Analysis;
+using OpenCvSharp;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 
 namespace NW_Market_Collector
 {
     public class VideoFileMarketImageGenerator : MarketImageGenerator
     {
         private readonly MarketImageDetector MarketImageDetector;
+        private readonly VideoImageExtractor VideoImageExtractor;
 
-        public VideoFileMarketImageGenerator(MarketImageDetector marketImageDetector)
+        public VideoFileMarketImageGenerator(MarketImageDetector marketImageDetector, VideoImageExtractor videoImageExtractor)
         {
             MarketImageDetector = marketImageDetector;
+            VideoImageExtractor = videoImageExtractor;
         }
 
         public bool TryCaptureMarketImage()
         {
             bool generatedMarketImage = false;
             string videoDirectory = Path.Combine(Directory.GetCurrentDirectory(), "videos");
+            Directory.CreateDirectory(videoDirectory);
             string completedVideoDirectory = Path.Combine(Directory.GetCurrentDirectory(), "completedvideos");
             Directory.CreateDirectory(completedVideoDirectory);
-            string[] videoPaths = Directory.GetFiles(videoDirectory, "*.mp4");
+            string[] videoPaths = Directory.GetFiles(videoDirectory, "*.mp4", SearchOption.AllDirectories);
             foreach (string videoPath in videoPaths)
             {
-                // TODO: Replace with the time when the video was created
-                DateTime videoCaptureTime = DateTime.UtcNow;
+                DateTime videoCaptureTime = FileFormatMetadata.GetSourceDateFromFile(videoPath);
 
-                using (VideoCapture video = new VideoCapture(videoPath))
+                string capturesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "captures");
+                string[] marketImagePaths = VideoImageExtractor.Extract(videoPath, videoCaptureTime, capturesDirectory);
+
+                foreach (string marketImagePath in marketImagePaths)
                 {
-                    Mat videoFrame = new Mat();
-                    while (video.Read(videoFrame))
+                    if (MarketImageDetector.ImageContainsBlueBanner(marketImagePath))
                     {
-
-                        string path = Path.Combine(Directory.GetCurrentDirectory(), "captures");
-                        Directory.CreateDirectory(path);
-
-                        path = Path.Combine(path, $"new.png");
-
-                        if (videoFrame.ImWrite(path))
-                        {
-                            if (MarketImageDetector.ImageContainsBlueBanner(path))
-                            {
-                                DateTime timeOfFrame = videoCaptureTime + TimeSpan.FromMilliseconds(video.PosMsec);
-                                string capturePath = Path.Combine(Path.Combine(Directory.GetCurrentDirectory(), "captures", $"market_{timeOfFrame.ToFileTimeUtc()}.png"));
-                                File.Move(path, capturePath, true);
-                                generatedMarketImage = true;
-                            }
-                        }
-                        else
-                        {
-                            Trace.WriteLine($"Failed to write frame {video.PosFrames} to file {path}.");
-                        }
-
-                        video.PosMsec += (int)TimeSpan.FromSeconds(1).TotalMilliseconds;
+                        string fileName = Path.GetFileName(marketImagePath);
+                        string capturePath = Path.Combine(capturesDirectory, $"market_{fileName}");
+                        File.Move(marketImagePath, capturePath, true);
+                        generatedMarketImage = true;
                     }
                 }
 
-                File.Move(videoPath, Path.Combine(completedVideoDirectory, Path.GetFileName(videoPath)));
+                string[] previouslyCompletedVideos = Directory.GetFiles(completedVideoDirectory, "*", SearchOption.AllDirectories);
+                if (previouslyCompletedVideos.Length >= 20)
+                {
+                    string oldestFile = previouslyCompletedVideos.OrderBy(_ => File.GetCreationTimeUtc(_)).FirstOrDefault();
+                    File.Delete(oldestFile);
+                }
+                File.Move(videoPath, Path.Combine(completedVideoDirectory, Path.GetFileName(videoPath)), overwrite: true);
             }
 
             return generatedMarketImage;

@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace MW_Market_Model
+namespace NW_Market_Model
 {
     public class TimeSpanJsonConverter : JsonConverter<TimeSpan>
     {

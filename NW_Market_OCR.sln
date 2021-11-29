@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_OCR", "NW_Market_
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Tools", "NW_Market_Tools\NW_Market_Tools.csproj", "{BCC0A28B-1B50-46AA-883D-D7239C0AD0B6}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MW_Market_Model", "MW_Market_Model\MW_Market_Model.csproj", "{DD9B21F5-328D-4A25-90B1-E9DC81B6FD54}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Model", "MW_Market_Model\NW_Market_Model.csproj", "{DD9B21F5-328D-4A25-90B1-E9DC81B6FD54}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NwdbInfoApi", "NwdbInfoApi\NwdbInfoApi.csproj", "{69927286-9B68-4F66-9204-658F38C56A38}"
 EndProject
@@ -15,9 +15,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Collector", "NW_M
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Market_Collector_Form", "NW_Market_Collector_Form\NW_Market_Collector_Form.csproj", "{E7F81B42-5339-4F8C-B0B0-0AB06344321B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivestreamerApi", "LivestreamerApi\LivestreamerApi.csproj", "{B776CF5B-7514-4C7C-AD1E-DF09716C1369}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Stream_Collector", "NW_Stream_Collector\NW_Stream_Collector.csproj", "{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StreamApi", "StreamApi\StreamApi.csproj", "{950E0242-9856-4B2A-AE2B-87BDABB17F9C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Image_Analysis", "NW_Image_Analysis\NW_Image_Analysis.csproj", "{10010FA6-2F24-4C9E-91DC-C16B98588690}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -49,14 +51,18 @@ Global
 		{E7F81B42-5339-4F8C-B0B0-0AB06344321B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E7F81B42-5339-4F8C-B0B0-0AB06344321B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E7F81B42-5339-4F8C-B0B0-0AB06344321B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B776CF5B-7514-4C7C-AD1E-DF09716C1369}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B776CF5B-7514-4C7C-AD1E-DF09716C1369}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B776CF5B-7514-4C7C-AD1E-DF09716C1369}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B776CF5B-7514-4C7C-AD1E-DF09716C1369}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{950E0242-9856-4B2A-AE2B-87BDABB17F9C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{950E0242-9856-4B2A-AE2B-87BDABB17F9C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{950E0242-9856-4B2A-AE2B-87BDABB17F9C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{950E0242-9856-4B2A-AE2B-87BDABB17F9C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

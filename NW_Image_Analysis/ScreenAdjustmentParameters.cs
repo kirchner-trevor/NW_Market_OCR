@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Drawing;
 
-namespace NW_Market_Collector
+namespace NW_Image_Analysis
 {
     public class ScreenAdjustmentParameters
     {
