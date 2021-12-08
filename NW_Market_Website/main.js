@@ -1,9 +1,10 @@
 import App from './app.js'
+import Servers from './servers.js'
 import Home from './home.js'
 import NotFound from './not-found.js'
 
 const routes = [
-  { path: '/', redirect: '/orofena/' },
+  { path: '/', component: Servers },
   { path: '/:server/', component: Home, props: true },
   { path: '*', component: NotFound }
 ]

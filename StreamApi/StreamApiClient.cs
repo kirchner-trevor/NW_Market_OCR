@@ -28,12 +28,12 @@ namespace StreamApi
                 streamLinkArguments.Add($"--hls-duration {duration.Value.Hours.ToString().PadLeft(2, '0')}:{duration.Value.Minutes.ToString().PadLeft(2, '0')}:{duration.Value.Seconds.ToString().PadLeft(2, '0')}");
             }
             string streamLinkArgumentsString = string.Join(" ", streamLinkArguments);
-            using (Process process = Process.Start(streamLinkFileName, streamLinkArgumentsString))
+            ProcessStartInfo processStartInfo = new ProcessStartInfo(streamLinkFileName, streamLinkArgumentsString);
+            processStartInfo.RedirectStandardError = false;
+            processStartInfo.RedirectStandardOutput = false;
+            using (Process process = Process.Start(processStartInfo))
             {
                 process.WaitForExit();
-
-                //string result = process.StandardOutput.ReadToEnd();
-                //Console.WriteLine(result);
             }
         }
     }

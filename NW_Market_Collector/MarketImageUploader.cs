@@ -59,7 +59,7 @@ namespace NW_Market_Collector
         {
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
-            DateTime fileCreationTime = FileFormatMetadata.GetSourceDateFromFile(path);
+            FileMetadata fileMetadata = FileFormatMetadata.GetMetadataFromFile(path, Configuration);
 
             string processedPath = MarketImageDetector.CleanInputImage(path, Configuration.IsCustomMarketArea() ? (Rectangle)Configuration.CustomMarketArea : null);
             string textContent = CleanTextContent(MarketImageDetector.ExtractTextContent(processedPath));
@@ -71,10 +71,10 @@ namespace NW_Market_Collector
                 {
                     FilePath = processedPath,
                     BucketName = "nwmarketimages",
-                    Key = Configuration.Server + "/" + Guid.NewGuid().ToString("D"),
+                    Key = fileMetadata.ServerId + "/" + Guid.NewGuid().ToString("D"),
                 };
                 putRequest.StreamTransferProgress += new EventHandler<StreamTransferProgressArgs>(UpdateProgress);
-                putRequest.Metadata.Add("timestamp", fileCreationTime.ToString("o"));
+                putRequest.Metadata.Add("timestamp", fileMetadata.CreationTime.ToString("o"));
                 putRequest.Metadata.Add("textcontent", textContent);
                 putRequest.Metadata.Add("user", Configuration.User);
 

@@ -29,10 +29,11 @@ namespace NW_Market_Collector
             string[] videoPaths = Directory.GetFiles(videoDirectory, "*.mp4", SearchOption.AllDirectories);
             foreach (string videoPath in videoPaths)
             {
-                DateTime videoCaptureTime = FileFormatMetadata.GetSourceDateFromFile(videoPath);
+                FileMetadata metadata = FileFormatMetadata.GetMetadataFromFile(videoPath); // TODO: Get "user" from file path as well
+                DateTime videoCaptureTime = metadata.CreationTime;
 
                 string capturesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "captures");
-                string[] marketImagePaths = VideoImageExtractor.Extract(videoPath, videoCaptureTime, capturesDirectory);
+                IEnumerable<string> marketImagePaths = VideoImageExtractor.Extract(videoPath, videoCaptureTime, capturesDirectory, $"{metadata.ServerId ?? "unknown"}_"); // TODO: Process 5 second intervals looking for market, then 0.5 second intervals until market isn't found again
 
                 foreach (string marketImagePath in marketImagePaths)
                 {
@@ -42,6 +43,24 @@ namespace NW_Market_Collector
                         string capturePath = Path.Combine(capturesDirectory, $"market_{fileName}");
                         File.Move(marketImagePath, capturePath, true);
                         generatedMarketImage = true;
+
+                        VideoImageExtractor.SetSecondsPerIteration(1f);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (File.Exists(marketImagePath))
+                            {
+                                File.Delete(marketImagePath);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            Trace.TraceError($"Failed to delete image not showing market at '{marketImagePath}.");
+                        }
+
+                        VideoImageExtractor.SetSecondsPerIteration(5f);
                     }
                 }
 

@@ -207,15 +207,22 @@ namespace NW_Market_OCR
 
             foreach (OcrTextArea word in words)
             {
-                // Find the group within N of the words Y value
-                int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
-                if (wordBucketsByHeight.ContainsKey(yGroupKey))
+                try
                 {
-                    wordBucketsByHeight[yGroupKey].Add(word);
+                    // Find the group within N of the words Y value
+                    int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
+                    if (wordBucketsByHeight.ContainsKey(yGroupKey))
+                    {
+                        wordBucketsByHeight[yGroupKey].Add(word);
+                    }
+                    else
+                    {
+                        wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { word });
+                    }
                 }
-                else
+                catch (Exception e)
                 {
-                    wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { word });
+                    Trace.TraceError($"Failed to add word with Y {word.Y} to buckets. Existing keys: {wordBucketsByHeight.Keys}\n{e.Message}");
                 }
             }
 
@@ -458,6 +465,7 @@ namespace NW_Market_OCR
 
         private static MarketColumnMappings ColumnMappings = new MarketColumnMappings();
 
+        // TODO: Update column ranges for smaller images. e.g. "Orun"
         private class MarketColumnMappings
         {
             // Pixels
@@ -490,8 +498,8 @@ namespace NW_Market_OCR
 
             public void SetSize(Point size)
             {
-                float xRatio = size.X / DEFAULT_SIZE.X;
-                float yRatio = size.Y / DEFAULT_SIZE.Y;
+                float xRatio = (1f * size.X) / DEFAULT_SIZE.X;
+                float yRatio = (1f * size.Y) / DEFAULT_SIZE.Y;
 
                 WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * yRatio);
                 NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;

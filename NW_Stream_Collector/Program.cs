@@ -7,7 +7,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using TwitchLib.Api;
 using TwitchLib.Api.Core.Enums;
@@ -50,9 +52,11 @@ namespace NW_Stream_Collector
     {
         private const string NEW_WORLD_GAME_ID = "493597";
         private const string IMAGE_OUTPUT_DIRECTORY = "images";
-        private const string VIDEO_OUTPUT_DIRECTORY = "videos"; // @"C:\Users\kirch\source\repos\NW_Market_OCR\NW_Market_Collector\bin\Debug\net5.0\videos";
+        private const string VIDEO_OUTPUT_DIRECTORY = "videos";
+        private const string FULL_MARKET_VIDEO_OUTPUT_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\NW_Market_Collector\bin\Debug\net5.0-windows\videos";
         private const string PROCESSED_VIDEOS_PATH = "processedVideos.json";
         private const string AUTHOR_INFO_PATH = "authorInfo.json";
+        private const string MARKET_SEGMENTS_PATH = "testMarketSegments.json";
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
         private readonly TwitchAPI twitchApi;
@@ -88,11 +92,17 @@ namespace NW_Stream_Collector
                 authorInfos = JsonSerializer.Deserialize<Dictionary<string, AuthorInfo>>(File.ReadAllText(AUTHOR_INFO_PATH));
             }
 
+            List<TimeSegment> segmentsContainingMarket = new List<TimeSegment>();
+            if (File.Exists(MARKET_SEGMENTS_PATH))
+            {
+                segmentsContainingMarket = JsonSerializer.Deserialize<List<TimeSegment>>(File.ReadAllText(MARKET_SEGMENTS_PATH));
+            }
+
             string cursor = null; // Start with the latest videos
             bool hasMoreVideos = true;
             DateTime oldestVideoCreateDate = DateTime.UtcNow;
 
-            while (hasMoreVideos && oldestVideoCreateDate > DateTime.UtcNow.AddDays(-1))
+            while (hasMoreVideos && oldestVideoCreateDate > DateTime.UtcNow.AddDays(-7))
             {
                 // Find list of videos for NW
                 twitchApi.Settings.AccessToken = twitchApi.Auth.GetAccessToken();
@@ -102,6 +112,8 @@ namespace NW_Stream_Collector
                 // Download 1 second snippets every 5 minutes
                 foreach (Video video in getVideosResponse.Videos)
                 {
+                    Trace.TraceInformation($"Started processing video {video.Id}");
+
                     // We've already seen this video
                     if (processedVideos.Contains(video.Id))
                     {
@@ -136,13 +148,12 @@ namespace NW_Stream_Collector
                     }
                     else
                     {
-                        //Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Skipping.");
-                        //continue;
-                        serverId = "unknown";
-                        Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Processing as '{serverId}' server.");
+                        Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Skipping.");
+                        continue;
+                        //serverId = "unknown";
+                        //Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Processing as '{serverId}' server.");
                     }
 
-                    List<TimeSegment> segmentsContainingMarket = new List<TimeSegment>();
                     TimeSegment currentMarketSegment = null;
 
                     int videoGetFailures = 0;
@@ -158,12 +169,13 @@ namespace NW_Stream_Collector
 
                         string imageDirectory = Path.Combine(IMAGE_OUTPUT_DIRECTORY, serverId);
                         Directory.CreateDirectory(imageDirectory);
-
+                        string videoFileNamePrefix = GetVideoPrefix(video.UserLogin, video.Id, serverId);
+                        string videoPath = Path.Combine(videoDirectory, GetVideoFileName(videoFileNamePrefix, fileTime));
                         bool downloadedVideo = false;
-                        string videoPath = Path.Combine(videoDirectory, $"{video.UserLogin}-{serverId}-{video.Id}_{fileTime}.mp4");
                         try
                         {
                             // TODO: Lower the quality of the snippet downloads since its just for detecting the blue banner (might need to adjust banner detection logic to support this)
+                            Trace.TraceInformation($"Downloading {TimeSpan.FromSeconds(1)} from {video.Id} at {TimeSpan.FromMinutes(startTimeMinutes)}.");
                             livestreamerApiClient.Download($"twitch.tv/videos/{video.Id}", "best", videoPath, TimeSpan.FromMinutes(startTimeMinutes), TimeSpan.FromSeconds(1));
                             downloadedVideo = true;
                         }
@@ -183,11 +195,14 @@ namespace NW_Stream_Collector
 
                         if (downloadedVideo)
                         {
-                            string[] imagePaths = videoImageExtractor.Extract(videoPath, snippetStartTime, imageDirectory, $"{video.UserLogin}-{serverId}-{video.Id}_");
+                            Trace.TraceInformation($"[{DateTime.UtcNow}] Extracting frames from video '{videoPath}'.");
+
+                            IEnumerable<string> imagePaths = videoImageExtractor.Extract(videoPath, snippetStartTime, imageDirectory, videoFileNamePrefix);
                             foreach (string imagePath in imagePaths)
                             {
                                 if (marketImageDetector.ImageContainsBlueBanner(imagePath))
                                 {
+                                    Trace.TraceInformation($"Image {imagePath} contained a blue banner.");
                                     // If the previous segment didn't contain the market, create a new one
                                     if (currentMarketSegment == null)
                                     {
@@ -240,13 +255,17 @@ namespace NW_Stream_Collector
                         }
                     }
 
-                    // TODO: Re-download the full segments of video when the market was visible
-                    // TODO: Copy video segments over for the Market_Collector to run on
+                    // Re-download the full segments of video when the market was visible
+                    foreach (TimeSegment marketTimeSegment in segmentsContainingMarket.Where(_ => _.VideoId == video.Id))
+                    {
+                        DownloadSegmentToCollectorFolder(video, serverId, videoStartTime, marketTimeSegment);
+                    }
 
+                    Trace.TraceInformation($"Finished processing video {video.Id}.");
                     processedVideos.Add(video.Id);
                     File.WriteAllText(PROCESSED_VIDEOS_PATH, JsonSerializer.Serialize(processedVideos));
 
-                    File.WriteAllText("testMarketSegments.json", JsonSerializer.Serialize(segmentsContainingMarket));
+                    File.WriteAllText(MARKET_SEGMENTS_PATH, JsonSerializer.Serialize(segmentsContainingMarket));
                 }
 
                 hasMoreVideos = getVideosResponse.Videos.Any();
@@ -266,11 +285,96 @@ namespace NW_Stream_Collector
             Trace.TraceInformation($"Finished processing all videos in the last day. Oldest create date was {oldestVideoCreateDate}.");
         }
 
+        private void DownloadSegmentToCollectorFolder(Video video, string serverId, DateTime videoStartTime, TimeSegment marketTimeSegment)
+        {
+            DateTime segmentStartTime = videoStartTime + marketTimeSegment.From - TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS);
+            long fileTime = segmentStartTime.ToFileTimeUtc();
+
+            // Copy video segments over for the Market_Collector to run on
+            string videoFileName = GetVideoFileName(GetVideoPrefix(video.UserLogin, video.Id, serverId), fileTime);
+            string videoPath = Path.Combine(FULL_MARKET_VIDEO_OUTPUT_DIRECTORY, serverId, videoFileName);
+
+            int fullMarketVideoGetFailures = 0;
+            bool downloadedVideo = false;
+            while (!downloadedVideo)
+            {
+                try
+                {
+                    int durationExtensionMinutes = 0;
+
+                    // Start one interval sooner than the first market image
+                    TimeSpan startOffset = marketTimeSegment.From;
+                    if (startOffset.TotalMinutes >= VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS)
+                    {
+                        startOffset -= TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS);
+                        durationExtensionMinutes += VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS;
+                    }
+
+                    // End at the end of the interval that saw the last market image
+                    TimeSpan duration = marketTimeSegment.To - marketTimeSegment.From;
+                    if ((startOffset + duration + TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS)) <= ParseDuration(video.Duration))
+                    {
+                        durationExtensionMinutes += VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS;
+                    }
+
+                    duration += TimeSpan.FromMinutes(durationExtensionMinutes);
+
+                    Trace.TraceInformation($"Downloading full market video {video.Id} from {startOffset} to {duration} to '{videoPath}'.");
+                    livestreamerApiClient.Download($"twitch.tv/videos/{video.Id}", "best", videoPath, startOffset, duration);
+                    downloadedVideo = true;
+                }
+                catch (Exception)
+                {
+                    fullMarketVideoGetFailures++;
+
+                    if (fullMarketVideoGetFailures >= VIDEO_GET_FAILURES_MAX)
+                    {
+                        Trace.TraceError($"Failed to download full market video {video.Id} {VIDEO_GET_FAILURES_MAX} times. Skipping.");
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static string GetVideoPrefix(string userLogin, string videoId, string serverId)
+        {
+            return $"{userLogin}-{videoId}_{serverId}_";
+        }
+
+        private static string GetVideoFileName(string videoFileNamePrefix, long fileTime)
+        {
+            return $"{videoFileNamePrefix}{fileTime}.mp4";
+        }
+
         private class TimeSegment
         {
             public string VideoId { get; set; }
-            public TimeSpan From { get; set; }
-            public TimeSpan To { get; set; }
+            public int FromMinutes { get; set; }
+            public int ToMinutes { get; set; }
+            [JsonIgnore]
+            public TimeSpan From
+            {
+                get
+                {
+                    return TimeSpan.FromMinutes(FromMinutes);
+                }
+                set
+                {
+                    FromMinutes = (int)Math.Floor(value.TotalMinutes);
+                }
+            }
+            [JsonIgnore]
+            public TimeSpan To
+            {
+                get
+                {
+                    return TimeSpan.FromMinutes(ToMinutes);
+                }
+                set
+                {
+                    ToMinutes = (int)Math.Ceiling(value.TotalMinutes);
+                }
+            }
         }
 
         private TimeSpan ParseDuration(string duration) //4h13m21s

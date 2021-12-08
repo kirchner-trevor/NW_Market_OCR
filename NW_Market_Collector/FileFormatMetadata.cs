@@ -5,20 +5,38 @@ namespace NW_Market_Collector
 {
     public static class FileFormatMetadata
     {
-        public static DateTime GetSourceDateFromFile(string path)
+        public static FileMetadata GetMetadataFromFile(string path, ApplicationConfiguration configuration = null)
         {
+            FileMetadata metadata = new FileMetadata();
+
             string fileNamePath = Path.GetFileNameWithoutExtension(path);
-            DateTime fileCreationTime;
-            if (long.TryParse(fileNamePath.Split("_")?[1] ?? "", out long fileNameTime))
+            string[] fileNameParts = fileNamePath.Split("_");
+
+            if (long.TryParse(fileNameParts[^1] ?? "", out long fileNameTime))
             {
-                fileCreationTime = DateTime.FromFileTimeUtc(fileNameTime);
+                metadata.CreationTime = DateTime.FromFileTimeUtc(fileNameTime);
             }
             else
             {
-                fileCreationTime = File.GetCreationTimeUtc(path);
+                metadata.CreationTime = File.GetCreationTimeUtc(path);
             }
 
-            return fileCreationTime;
+            if (fileNameParts.Length >= 3)
+            {
+                metadata.ServerId = fileNameParts[^2];
+            }
+            else
+            {
+                metadata.ServerId = configuration?.Server;
+            }
+
+            return metadata;
         }
+    }
+
+    public class FileMetadata
+    {
+        public DateTime CreationTime { get; set; }
+        public string ServerId { get; set; }
     }
 }
