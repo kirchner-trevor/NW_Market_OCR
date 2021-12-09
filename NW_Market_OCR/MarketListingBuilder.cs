@@ -131,31 +131,33 @@ namespace NW_Market_OCR
             return wordBucketsByHeight;
         }
 
-        // TODO: Update column ranges for smaller images. e.g. "Orun"
         private class MarketColumnMappings
         {
             // Pixels
             private static Point DEFAULT_SIZE = new Point(1130, 730);
 
-            // Iron Ocr Coordinates
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 315);
-            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(316, 400);
-            // Tier 401, 460
-            // GS 461, 530
-            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(815, 875);
-            private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(876, 940);
-            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(941, 1005);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1006, 1130);
+            // Pixel Coordinates (1px to either side)
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(4, 272);
+            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(314, 385);
+            private Range DEFAULT_TEIR_TEXT_X_RANGE = new Range(426, 443);
+            private Range DEFAULT_GEARSCORE_TEXT_X_RANGE = new Range(485, 512);
+            private Range DEFAULT_QUALITY_TEXT_X_RANGE = new Range(732, 804);
+            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(823, 867);
+            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(954, 985);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1019, 1114);
+
+            private int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 15;
 
             public Range NAME_TEXT_X_RANGE { get; private set; }
             public Range PRICE_TEXT_X_RANGE { get; private set; }
+            public Range TEIR_TEXT_X_RANGE { get; private set; }
+            public Range GEARSCORE_TEXT_X_RANGE { get; private set; }
+            public Range QUALITY_TEXT_X_RANGE { get; private set; }
             public Range AVAILABLE_TEXT_X_RANGE { get; private set; }
-            public Range OWNED_TEXT_X_RANGE { get; private set; }
             public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
             public Range LOCATION_TEXT_X_RANGE { get; private set; }
 
-            public static int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
-            public int WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
+            public int WORD_BUCKET_Y_GROUPING_THRESHOLD { get; private set; }
 
             public MarketColumnMappings()
             {
@@ -167,11 +169,13 @@ namespace NW_Market_OCR
                 float xRatio = (1f * size.X) / DEFAULT_SIZE.X;
                 float yRatio = (1f * size.Y) / DEFAULT_SIZE.Y;
 
-                WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * yRatio);
+                WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Ceiling(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * yRatio);
                 NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
+                TEIR_TEXT_X_RANGE = DEFAULT_TEIR_TEXT_X_RANGE * xRatio;
+                GEARSCORE_TEXT_X_RANGE = DEFAULT_GEARSCORE_TEXT_X_RANGE * xRatio;
+                QUALITY_TEXT_X_RANGE = DEFAULT_QUALITY_TEXT_X_RANGE * xRatio;
                 PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
                 AVAILABLE_TEXT_X_RANGE = DEFAULT_AVAILABLE_TEXT_X_RANGE * xRatio;
-                OWNED_TEXT_X_RANGE = DEFAULT_OWNED_TEXT_X_RANGE * xRatio;
                 TIME_REMAINING_TEXT_X_RANGE = DEFAULT_TIME_REMAINING_TEXT_X_RANGE * xRatio;
                 LOCATION_TEXT_X_RANGE = DEFAULT_LOCATION_TEXT_X_RANGE * xRatio;
             }
@@ -195,7 +199,7 @@ namespace NW_Market_OCR
 
             public static Range operator *(Range range, float scale)
             {
-                return new Range((int)Math.Round(range.Start * scale), (int)Math.Round(range.End * scale));
+                return new Range((int)Math.Floor(range.Start * scale), (int)Math.Ceiling(range.End * scale));
             }
         }
     }

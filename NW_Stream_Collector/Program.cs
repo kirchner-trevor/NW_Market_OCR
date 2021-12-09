@@ -200,7 +200,7 @@ namespace NW_Stream_Collector
                             IEnumerable<string> imagePaths = videoImageExtractor.Extract(videoPath, snippetStartTime, imageDirectory, videoFileNamePrefix);
                             foreach (string imagePath in imagePaths)
                             {
-                                if (marketImageDetector.ImageContainsBlueBanner(imagePath))
+                                if (marketImageDetector.ImageContainsTradingPost(imagePath))
                                 {
                                     Trace.TraceInformation($"Image {imagePath} contained a blue banner.");
                                     // If the previous segment didn't contain the market, create a new one

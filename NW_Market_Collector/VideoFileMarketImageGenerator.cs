@@ -37,7 +37,7 @@ namespace NW_Market_Collector
 
                 foreach (string marketImagePath in marketImagePaths)
                 {
-                    if (MarketImageDetector.ImageContainsBlueBanner(marketImagePath))
+                    if (MarketImageDetector.ImageContainsTradingPost(marketImagePath))
                     {
                         string fileName = Path.GetFileName(marketImagePath);
                         string capturePath = Path.Combine(capturesDirectory, $"market_{fileName}");

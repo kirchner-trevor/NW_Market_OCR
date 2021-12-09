@@ -29,7 +29,7 @@ namespace NW_Market_Collector
                 return false;
             }
 
-            if (MarketImageDetector.ImageContainsBlueBanner(path))
+            if (MarketImageDetector.ImageContainsTradingPost(path))
             {
                 Trace.WriteLine("Found market interface capturing market listings... ");
                 ConsoleHUD.CollectorStatus = "Capturing Market Data";

@@ -14,10 +14,13 @@ namespace NW_Image_Analysis
         private Rectangle DEFAULT_BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
         private Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
         private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
+        private Rectangle DEFAULT_TRADING_POST_HEADER_AREA = new Rectangle { X = 130, Y = 31, Width = 320, Height = 24 };
+        private string TRADING_POST_HEADER_TEXT = "TRADING POST.";
+        private int TRADING_POST_HEADER_TEXT_THRESHOLD = 5;
 
         private TesseractEngine tesseractEngine = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata"), "eng", EngineMode.Default);
 
-        public bool ImageContainsBlueBanner(string path)
+        public bool ImageContainsTradingPost(string path)
         {
             bool containsBlueBanner = false;
 
@@ -29,7 +32,7 @@ namespace NW_Image_Analysis
                 {
                     using (Bitmap myBitmap = new Bitmap(path))
                     {
-                        containsBlueBanner = ImageContainsBlueBanner(myBitmap);
+                        containsBlueBanner = ImageContainsTradingPost(myBitmap);
                     }
                 }
                 catch (Exception)
@@ -41,7 +44,27 @@ namespace NW_Image_Analysis
             return containsBlueBanner;
         }
 
-        public bool ImageContainsBlueBanner(Bitmap myBitmap)
+        public bool ImageContainsTradingPost(Bitmap myBitmap)
+        {
+            return ImageContainsBlueBanner(myBitmap) && ImageContainsTradingPostHeader(myBitmap);
+        }
+
+        public bool ImageContainsTradingPostHeader(Bitmap myBitmap)
+        {
+            ScreenAdjustmentParameters screenAdjustments = GetScreenAdjustmentsForWindow(myBitmap.Width, myBitmap.Height);
+            Rectangle tradingPostHeaderArea = screenAdjustments.Adjust(DEFAULT_TRADING_POST_HEADER_AREA);
+            Rect ocrArea = new Rect(tradingPostHeaderArea.X, tradingPostHeaderArea.Y, tradingPostHeaderArea.Width, tradingPostHeaderArea.Height);
+
+            using (Page page = tesseractEngine.Process(myBitmap, ocrArea))
+            {
+                string text = page.GetText();
+                Fastenshtein.Levenshtein nameLevenshtein = new Fastenshtein.Levenshtein(text);
+
+                return nameLevenshtein.DistanceFrom(TRADING_POST_HEADER_TEXT) < TRADING_POST_HEADER_TEXT_THRESHOLD;
+            }
+        }
+
+        private bool ImageContainsBlueBanner(Bitmap myBitmap)
         {
             bool containsBlueBanner = false;
 
@@ -70,27 +93,32 @@ namespace NW_Image_Analysis
 
         public ScreenAdjustmentParameters GetScreenAdjustmentsForWindow(float width, float height)
         {
-            ScreenAdjustmentParameters screenAdjustments;
+            ScreenAdjustmentParameters screenAdjustments = new ScreenAdjustmentParameters();
+
+            // If the height ends in something weird like 9, it may be windowed
+            if (height % 10 == 9) //1296 x 759
+            {
+                screenAdjustments.XMargin = 8;
+                screenAdjustments.TopMargin = 31;
+                screenAdjustments.BottomMargin = 8;
+
+                height = height - screenAdjustments.TopMargin - screenAdjustments.BottomMargin;
+                width = width - (2 * screenAdjustments.XMargin);
+            }
 
             float yRatio = height / DEFAULT_SCREEN_SIZE.Y;
 
             // Scale linearly with padding
-            if ((height / width) > (DEFAULT_SCREEN_SIZE.Y / DEFAULT_SCREEN_SIZE.X))
+            if ((height / width) > (1f * DEFAULT_SCREEN_SIZE.Y / DEFAULT_SCREEN_SIZE.X))
             {
-                screenAdjustments = new ScreenAdjustmentParameters
-                {
-                    XPadding = (width - (yRatio * DEFAULT_SCREEN_SIZE.X)) / 2,
-                    Scale = yRatio,
-                };
+                screenAdjustments.XPadding = (width - (yRatio * DEFAULT_SCREEN_SIZE.X)) / 2f;
+                screenAdjustments.Scale = yRatio;
             }
             // Scale linearly without padding (probably?)
             else
             {
-                screenAdjustments = new ScreenAdjustmentParameters
-                {
-                    XPadding = 0,
-                    Scale = yRatio,
-                };
+                screenAdjustments.XPadding = 0;
+                screenAdjustments.Scale = yRatio;
             }
 
             return screenAdjustments;

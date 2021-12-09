@@ -5,10 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
     <PackageReference Include="OpenCvSharp4.Windows" Version="4.5.3.20210817" />
     <PackageReference Include="Tesseract" Version="4.1.1" />
     <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
     <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
+    <PackageReference Include="Tesseract.Drawing" Version="4.1.1" />
   </ItemGroup>
 
   <ItemGroup>
