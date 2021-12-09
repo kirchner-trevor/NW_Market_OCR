@@ -180,6 +180,7 @@ namespace NW_Market_Collector
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"NW Market Collector encountered an error and is shutting down. See '{LOG_FILE_NAME}' for details.");
+                Trace.Close();
                 File.AppendAllText(LOG_FILE_NAME, e.Message);
                 Console.ResetColor();
 

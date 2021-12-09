@@ -9,7 +9,7 @@ namespace NW_Image_Analysis
 {
     public class VideoImageExtractor
     {
-        private double throughputPerSecond = 2d / 1;
+        private double throughputPerSecond = 1d / 1;
         private double secondsPerIteration = 1d;
 
         public VideoImageExtractor()

@@ -44,7 +44,7 @@ namespace NW_Market_Collector
                         File.Move(marketImagePath, capturePath, true);
                         generatedMarketImage = true;
 
-                        VideoImageExtractor.SetSecondsPerIteration(1f);
+                        VideoImageExtractor.SetSecondsPerIteration(1f / 2);
                     }
                     else
                     {
