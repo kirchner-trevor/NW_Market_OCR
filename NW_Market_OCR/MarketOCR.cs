@@ -16,13 +16,14 @@ using Tesseract;
 
 namespace NW_Market_OCR
 {
-    class MarketOCR
+    public class MarketOCR
     {
+        public const string OCR_KIND_DECIMALS = "decimals";
+        public const string OCR_KIND_LETTERS = "letters";
+
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
         private const int MAX_AUTOCORRECT_DISTANCE = 5;
-        private const string OCR_KIND_DECIMALS = "decimals";
-        private const string OCR_KIND_LETTERS = "letters";
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
 
@@ -39,6 +40,7 @@ namespace NW_Market_OCR
         {
             new ManualAutocorrect("Wyrdwood", 3, new[] { "Wymv", "WMwood" }),
         };
+        private static MarketListingBuilder marketListingBuilder = new MarketListingBuilder();
 
         [STAThread]
         static async Task Main(string[] args)
@@ -200,35 +202,6 @@ namespace NW_Market_OCR
             public string SecretAccessKey { get; set; }
         }
 
-        private static Dictionary<int, List<OcrTextArea>> ExtractMarketListingTextFromNewWorldMarketImage(string processedPath, Func<string, List<OcrTextArea>> runOcr)
-        {
-            List<OcrTextArea> words = runOcr(processedPath);
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
-
-            foreach (OcrTextArea word in words)
-            {
-                try
-                {
-                    // Find the group within N of the words Y value
-                    int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
-                    if (wordBucketsByHeight.ContainsKey(yGroupKey))
-                    {
-                        wordBucketsByHeight[yGroupKey].Add(word);
-                    }
-                    else
-                    {
-                        wordBucketsByHeight.Add(word.Y, new List<OcrTextArea> { word });
-                    }
-                }
-                catch (Exception e)
-                {
-                    Trace.TraceError($"Failed to add word with Y {word.Y} to buckets. Existing keys: {wordBucketsByHeight.Keys}\n{e.Message}");
-                }
-            }
-
-            return wordBucketsByHeight;
-        }
-
         private static TesseractEngine tesseractEngineForDecimals = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/normal"), "eng", EngineMode.TesseractOnly);
         private static TesseractEngine tesseractOcrForLetters = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/best"), "eng", EngineMode.Default);
 
@@ -269,106 +242,6 @@ namespace NW_Market_OCR
             }
 
             return textAreas;
-        }
-
-        private class Range
-        {
-            public Range(int start, int end)
-            {
-                Start = start;
-                End = end;
-            }
-
-            public int Start;
-            public int End;
-
-            public bool Contains(int value)
-            {
-                return Start <= value && value < End;
-            }
-
-            public static Range operator *(Range range, float scale)
-            {
-                return new Range((int)Math.Round(range.Start * scale), (int)Math.Round(range.End * scale));
-            }
-        }
-
-        private static MarketListing CreateMarketListing(List<OcrTextArea> looseWordLine)
-        {
-            MarketListing marketListing = new MarketListing();
-
-            foreach (OcrTextArea word in looseWordLine.Where(_ => _.Kind == OCR_KIND_DECIMALS))
-            {
-                if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.OriginalPrice = word.Text;
-                    if (float.TryParse(word.Text, out float price))
-                    {
-                        marketListing.Price = price;
-                    }
-                }
-            }
-
-            foreach (OcrTextArea word in looseWordLine.Where(_ => _.Kind == OCR_KIND_LETTERS))
-            {
-                if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
-                {
-                    // Sometimes the name gets split into pieces
-                    marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
-                    marketListing.Name = marketListing.OriginalName;
-                }
-                else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.Latest.OriginalAvailable = word.Text;
-                    if (int.TryParse(word.Text, out int available))
-                    {
-                        marketListing.Latest.Available = available;
-                    }
-                }
-                else if (ColumnMappings.TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.Latest.OriginalTimeRemaining = word.Text;
-                    string cleanedWord = word.Text.Replace(" ", "");
-
-                    // Manual corrections
-                    if (cleanedWord.EndsWith("4") || cleanedWord.EndsWith("n"))
-                    {
-                        cleanedWord = cleanedWord.Substring(0, cleanedWord.Length - 1) + "h";
-                    }
-                    if (cleanedWord.Length == 2 && (cleanedWord.StartsWith("a") || cleanedWord.StartsWith("g")))
-                    {
-                        cleanedWord = "6" + cleanedWord.Substring(1, cleanedWord.Length - 1);
-                    }
-                    if (cleanedWord.Length == 2 && cleanedWord.StartsWith("S"))
-                    {
-                        cleanedWord = "9" + cleanedWord.Substring(1, cleanedWord.Length - 1);
-                    }
-
-                    if (cleanedWord.EndsWith("h"))
-                    {
-                        string amountText = cleanedWord.Replace("h", "");
-                        if (int.TryParse(amountText, out int timeAmount))
-                        {
-                            marketListing.Latest.TimeRemaining = TimeSpan.FromHours(timeAmount);
-                        }
-                    }
-                    else if (cleanedWord.EndsWith("d"))
-                    {
-                        string amountText = cleanedWord.Replace("d", "");
-                        if (int.TryParse(amountText, out int timeAmount))
-                        {
-                            marketListing.Latest.TimeRemaining = TimeSpan.FromDays(timeAmount);
-                        }
-                    }
-                }
-                else if (ColumnMappings.LOCATION_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.OriginalLocation = marketListing.OriginalLocation == null ? word.Text : marketListing.OriginalLocation + word.Text;
-                    marketListing.Location = marketListing.OriginalLocation;
-                }
-            }
-
-            return marketListing;
         }
 
         private static MarketListing ValidateAndFixMarketListing(MarketListing marketListing)
@@ -463,69 +336,22 @@ namespace NW_Market_OCR
 
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();
 
-        private static MarketColumnMappings ColumnMappings = new MarketColumnMappings();
-
-        // TODO: Update column ranges for smaller images. e.g. "Orun"
-        private class MarketColumnMappings
-        {
-            // Pixels
-            private static Point DEFAULT_SIZE = new Point(1130, 730);
-
-            // Iron Ocr Coordinates
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 315);
-            private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(316, 400);
-            // Tier 401, 460
-            // GS 461, 530
-            private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(815, 875);
-            private Range DEFAULT_OWNED_TEXT_X_RANGE = new Range(876, 940);
-            private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(941, 1005);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1006, 1130);
-
-            public Range NAME_TEXT_X_RANGE { get; private set; }
-            public Range PRICE_TEXT_X_RANGE { get; private set; }
-            public Range AVAILABLE_TEXT_X_RANGE { get; private set; }
-            public Range OWNED_TEXT_X_RANGE { get; private set; }
-            public Range TIME_REMAINING_TEXT_X_RANGE { get; private set; }
-            public Range LOCATION_TEXT_X_RANGE { get; private set; }
-
-            public static int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
-            public int WORD_BUCKET_Y_GROUPING_THRESHOLD = 50;
-
-            public MarketColumnMappings()
-            {
-                SetSize(DEFAULT_SIZE);
-            }
-
-            public void SetSize(Point size)
-            {
-                float xRatio = (1f * size.X) / DEFAULT_SIZE.X;
-                float yRatio = (1f * size.Y) / DEFAULT_SIZE.Y;
-
-                WORD_BUCKET_Y_GROUPING_THRESHOLD = (int)Math.Round(DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD * yRatio);
-                NAME_TEXT_X_RANGE = DEFAULT_NAME_TEXT_X_RANGE * xRatio;
-                PRICE_TEXT_X_RANGE = DEFAULT_PRICE_TEXT_X_RANGE * xRatio;
-                AVAILABLE_TEXT_X_RANGE = DEFAULT_AVAILABLE_TEXT_X_RANGE * xRatio;
-                OWNED_TEXT_X_RANGE = DEFAULT_OWNED_TEXT_X_RANGE * xRatio;
-                TIME_REMAINING_TEXT_X_RANGE = DEFAULT_TIME_REMAINING_TEXT_X_RANGE * xRatio;
-                LOCATION_TEXT_X_RANGE = DEFAULT_LOCATION_TEXT_X_RANGE * xRatio;
-            }
-        }
-
         private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath, DateTime captureTime)
         {
+            Point imageSize;
             using (Image image = Image.FromFile(processedPath))
             {
-                ColumnMappings.SetSize(new Point(image.Width, image.Height));
+                imageSize = new Point(image.Width, image.Height);
             }
 
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = ExtractMarketListingTextFromNewWorldMarketImage(processedPath, OCR_ENGINE);
+            List<MarketListing> rawMarketListings = marketListingBuilder.BuildFromMany(OCR_ENGINE(processedPath), imageSize.X, imageSize.Y);
 
             string batchId = Guid.NewGuid().ToString("D");
 
             List<MarketListing> marketListings = new List<MarketListing>();
-            foreach (KeyValuePair<int, List<OcrTextArea>> wordBucket in wordBucketsByHeight.OrderBy(_ => _.Key))
+            foreach (MarketListing rawMarketListing in rawMarketListings)
             {
-                MarketListing newMarketListing = ValidateAndFixMarketListing(CreateMarketListing(wordBucket.Value));
+                MarketListing newMarketListing = ValidateAndFixMarketListing(rawMarketListing);
                 newMarketListing.Latest.BatchId = batchId;
                 newMarketListing.Latest.Time = captureTime;
 
