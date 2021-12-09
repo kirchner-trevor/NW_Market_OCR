@@ -13,13 +13,15 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NwdbInfoApi", "NwdbInfoApi\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Collector", "NW_Market_Collector\NW_Market_Collector.csproj", "{3C8260D2-A5E1-42B3-B792-4A8A1B652D72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Market_Collector_Form", "NW_Market_Collector_Form\NW_Market_Collector_Form.csproj", "{E7F81B42-5339-4F8C-B0B0-0AB06344321B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_Collector_Form", "NW_Market_Collector_Form\NW_Market_Collector_Form.csproj", "{E7F81B42-5339-4F8C-B0B0-0AB06344321B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Stream_Collector", "NW_Stream_Collector\NW_Stream_Collector.csproj", "{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Stream_Collector", "NW_Stream_Collector\NW_Stream_Collector.csproj", "{BA46A9AB-D81B-46A8-B1DF-A2F1A390CDA8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StreamApi", "StreamApi\StreamApi.csproj", "{950E0242-9856-4B2A-AE2B-87BDABB17F9C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "StreamApi", "StreamApi\StreamApi.csproj", "{950E0242-9856-4B2A-AE2B-87BDABB17F9C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Image_Analysis", "NW_Image_Analysis\NW_Image_Analysis.csproj", "{10010FA6-2F24-4C9E-91DC-C16B98588690}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Image_Analysis", "NW_Image_Analysis\NW_Image_Analysis.csproj", "{10010FA6-2F24-4C9E-91DC-C16B98588690}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Market_OCR_Tests", "NW_Market_OCR_Tests\NW_Market_OCR_Tests.csproj", "{9F7B7D15-28D5-4457-89C5-4E5749A87C54}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -63,6 +65,10 @@ Global
 		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{10010FA6-2F24-4C9E-91DC-C16B98588690}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F7B7D15-28D5-4457-89C5-4E5749A87C54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F7B7D15-28D5-4457-89C5-4E5749A87C54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F7B7D15-28D5-4457-89C5-4E5749A87C54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F7B7D15-28D5-4457-89C5-4E5749A87C54}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

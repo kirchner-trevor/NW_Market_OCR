@@ -336,7 +336,7 @@ namespace NW_Market_OCR
 
         private static List<MarketListing> previousMarketListings = new List<MarketListing>();
 
-        private static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath, DateTime captureTime)
+        public static void UpdateDatabaseWithMarketListings(MarketDatabase database, string processedPath, DateTime captureTime)
         {
             Point imageSize;
             using (Image image = Image.FromFile(processedPath))
