@@ -17,10 +17,12 @@ namespace NW_Market_Model
 
         public string ListingId { get; set; }
 
+        public string NameId { get; set; }
         public string Name { get; set; }
         public string OriginalName { get; set; }
         public float Price { get; set; }
         public string OriginalPrice { get; set; }
+        public string LocationId { get; set; }
         public string Location { get; set; }
         public string OriginalLocation { get; set; }
 

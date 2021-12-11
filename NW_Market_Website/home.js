@@ -3,8 +3,12 @@ export default {
     template: /*html*/`
     <b-container class="mt-3" fluid>
         <b-navbar toggleable="lg">
-            <b-navbar-brand href="#/"><h2><strong>NW Market</strong> - {{selectedServer.Name}}</h2></b-navbar-brand>
+            <b-navbar-brand href="#/"><h2><b-icon-globe></b-icon-globe> <strong>NW Market</strong> - {{selectedServer.Name}}</h2></b-navbar-brand>
         </b-navbar>
+        <b-card class="bg-light">
+            <p>Do you use <b-link href="https://gaming.tools/newworld/price-customization" target="_blank">Gaming Tools</b-link>? Click the button below to download a price customization file.</p>
+            <b-button variant="primary" :href="'//nwmarketdata.s3.us-east-2.amazonaws.com/' + selectedServerId + '/gamingToolsPrices.json'" target="_blank" download>Download</b-button>
+        </b-card>
         </br>
         <b-card no-body>
             <b-tabs v-model="tabIndex" card>

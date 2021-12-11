@@ -31,13 +31,14 @@ namespace NW_Market_Tools
 
             IMarketTool[] perServerTools = new IMarketTool[]
             {
-                new ItemPriceTrendFinder(marketDatabase, s3Client, itemDatabase),
-                new RecipePriceFinder(accessKeyId, secretAccessKey, itemDatabase),
+                new GamingToolsPriceCustomization(marketDatabase, s3Client, DATA_DIRECTORY),
+                //new ItemPriceTrendFinder(marketDatabase, s3Client, itemDatabase),
+                //new RecipePriceFinder(accessKeyId, secretAccessKey, itemDatabase),
             };
 
             IMarketTool[] globalTools = new IMarketTool[]
             {
-                new ServerListActivity(configurationDatabase, s3Client, itemDatabase),
+                //new ServerListActivity(configurationDatabase, s3Client, itemDatabase),
             };
 
             while (true)

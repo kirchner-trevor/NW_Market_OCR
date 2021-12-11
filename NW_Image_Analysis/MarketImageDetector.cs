@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Text.RegularExpressions;
 using Tesseract;
 
 namespace NW_Image_Analysis
@@ -15,9 +16,11 @@ namespace NW_Image_Analysis
         private Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
         private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
         private Rectangle DEFAULT_TRADING_POST_HEADER_AREA = new Rectangle { X = 130, Y = 31, Width = 320, Height = 24 };
-        private string TRADING_POST_HEADER_TEXT = "TRADING POST.";
-        private int TRADING_POST_HEADER_TEXT_THRESHOLD = 5;
+        private const string TRADING_POST_HEADER_TEXT = "TRADINGPOST.";
+        private const string TRADING_POST_HEADER_SHORT_TEXT = "POST";
+        private int TRADING_POST_HEADER_TEXT_THRESHOLD = 7;
 
+        private readonly Regex whitespaceRegex = new Regex(@"\s+");
         private TesseractEngine tesseractEngine = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata"), "eng", EngineMode.Default);
 
         public bool ImageContainsTradingPost(string path)
@@ -55,12 +58,15 @@ namespace NW_Image_Analysis
             Rectangle tradingPostHeaderArea = screenAdjustments.Adjust(DEFAULT_TRADING_POST_HEADER_AREA);
             Rect ocrArea = new Rect(tradingPostHeaderArea.X, tradingPostHeaderArea.Y, tradingPostHeaderArea.Width, tradingPostHeaderArea.Height);
 
-            using (Page page = tesseractEngine.Process(myBitmap, ocrArea))
+            using (Pix image = PixConverter.ToPix(myBitmap))
+            using (Page page = tesseractEngine.Process(image, ocrArea))
             {
-                string text = page.GetText();
+                string text = whitespaceRegex.Replace(page.GetText(), "");
                 Fastenshtein.Levenshtein nameLevenshtein = new Fastenshtein.Levenshtein(text);
-
-                return nameLevenshtein.DistanceFrom(TRADING_POST_HEADER_TEXT) < TRADING_POST_HEADER_TEXT_THRESHOLD;
+                int distance = nameLevenshtein.DistanceFrom(TRADING_POST_HEADER_TEXT);
+                bool containsShortText = text.ToUpperInvariant().Contains(TRADING_POST_HEADER_SHORT_TEXT);
+                bool isWithinDistance = distance < TRADING_POST_HEADER_TEXT_THRESHOLD;
+                return containsShortText || isWithinDistance;
             }
         }
 
@@ -173,11 +179,9 @@ namespace NW_Image_Analysis
         public string ExtractTextContent(string processedPath)
         {
             using (Pix image = Pix.LoadFromFile(processedPath))
+            using (Page page = tesseractEngine.Process(image))
             {
-                using (Page page = tesseractEngine.Process(image))
-                {
-                    return page.GetText();
-                }
+                return page.GetText();
             }
         }
 

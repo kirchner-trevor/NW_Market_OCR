@@ -47,6 +47,14 @@ namespace NW_Market_OCR_Tests
             }
         }
 
+        [TestMethod]
+        public void UpdateDatabaseWithMarketListings_Clean_1130x730_Image()
+        {
+            MarketDatabase marketDatabase = new MarketDatabase();
+            DateTime captureTime = DateTime.UtcNow;
+            MarketOCR.UpdateDatabaseWithMarketListings(marketDatabase, Path.Combine(Directory.GetCurrentDirectory(), "TestImages", "1130x730.png"), captureTime);
+        }
+
         private static void AsserMarketListingsAreEqual(MarketListing expected, MarketListing actual)
         {
             Assert.AreEqual(expected.Latest.Time, actual.Latest.Time);

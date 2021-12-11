@@ -3,7 +3,7 @@ export default {
     template: /*html*/`
     <b-container class="mt-3" fluid>
         <b-navbar toggleable="lg">
-            <b-navbar-brand href="#/"><h2><strong>NW Market</strong></h2></b-navbar-brand>
+            <b-navbar-brand href="#/"><h2><b-icon-globe></b-icon-globe> <strong>NW Market</strong></h2></b-navbar-brand>
         </b-navbar>
         <b-card class="bg-light">
             <p><em>View market listings, recipes, and more to come!</em></p>

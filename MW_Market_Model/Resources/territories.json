@@ -1,0 +1,170 @@
+﻿[
+  {
+    "territoryId": "eastburn",
+    "names": [
+      "Eastburn"
+    ]
+  },
+  {
+    "territoryId": "cleavespoint",
+    "names": [
+      "Cleave's Point"
+    ]
+  },
+  {
+    "territoryId": "laststand",
+    "names": [
+      "Last Stand"
+    ]
+  },
+  {
+    "territoryId": "mountainrise",
+    "names": [
+      "Mountainrise"
+    ]
+  },
+  {
+    "territoryId": "mountainhome",
+    "names": [
+      "Mountainhome"
+    ]
+  },
+  {
+    "territoryId": "valorhold",
+    "names": [
+      "Valor Hold"
+    ]
+  },
+  {
+    "territoryId": "reekwater",
+    "names": [
+      "Reekwater",
+      "Eaux-Fétides",
+      "Aguas Fétidas",
+      "Brackwasser",
+      "Acquafetida",
+      "Cuchnąca Woda",
+      "Águas Fétidas"
+    ]
+  },
+  {
+    "territoryId": "everfall",
+    "names": [
+      "Everfall",
+      "Haute-Chute",
+      "Ocaso",
+      "Immerfall",
+      "Calata eterna",
+      "Jesieniowiecznia",
+      "Queda Eterna"
+    ]
+  },
+  {
+    "territoryId": "mourningdale",
+    "names": [
+      "Mourningdale",
+      "Val des Larmes",
+      "Valle del Pesar",
+      "Klagental",
+      "Valle del cordoglio",
+      "Żałobnica",
+      "Vale das Lamentações"
+    ]
+  },
+  {
+    "territoryId": "cutlasskeys",
+    "names": [
+      "Cutlass Keys",
+      "Îles des Lames",
+      "Cayos del Alfanje",
+      "Entermesserriff",
+      "Scogliere della sciabola",
+      "Wyspy Kordelasowe",
+      "Ilhéus do Sabre"
+    ]
+  },
+  {
+    "territoryId": "queensport",
+    "names": [
+      "Ebonscale Reach",
+      "Bief de Nerécaille",
+      "Altos de Escamanegra",
+      "Ebenmaß",
+      "Scaglia d'ebano",
+      "Czarna Łuska",
+      "Crosta de Ébano"
+    ]
+  },
+  {
+    "territoryId": "firstlight",
+    "names": [
+      "First Light",
+      "Levant",
+      "Primera Luz",
+      "Erstes Licht",
+      "Prima luce",
+      "Brzask",
+      "Primeira Luz"
+    ]
+  },
+  {
+    "territoryId": "brightwood",
+    "names": [
+      "Brightwood",
+      "Boisclair",
+      "Bosque Luminoso",
+      "Lichtholz",
+      "Boscobrillante",
+      "Lśniąca Knieja",
+      "Bosque Reluzente"
+    ]
+  },
+  {
+    "territoryId": "weaversfen",
+    "names": [
+      "Weaver's Fen",
+      "Marais des Trames",
+      "Ciénaga de los Tejedores",
+      "Webermoor",
+      "Palude del tessitore",
+      "Tkackie Mokradła",
+      "Pântano do Tecelão"
+    ]
+  },
+  {
+    "territoryId": "windsward",
+    "names": [
+      "Windsward",
+      "Gré-du-Vent",
+      "Guardaelviento",
+      "Windkreis",
+      "Sopravvento",
+      "Wiatrochron",
+      "Guardaventos"
+    ]
+  },
+  {
+    "territoryId": "monarchsbluffs",
+    "names": [
+      "Monarch's Bluffs",
+      "Falaises du Roy",
+      "Riscos del Monarca",
+      "Königsfels",
+      "Promontorio del Monarca",
+      "Urwiska Monarchy",
+      "Falésias do Monarca"
+    ]
+  },
+  {
+    "territoryId": "restlessshore",
+    "names": [
+      "Restless Shore",
+      "Rive tourmentée",
+      "Costa de la Zozobra",
+      "Unstete Küste",
+      "Sponda inquieta",
+      "Niespokojne Brzegi",
+      "Costa Tempestuosa"
+    ]
+  }
+]

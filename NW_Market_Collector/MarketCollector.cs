@@ -113,11 +113,9 @@ namespace NW_Market_Collector
 
         public static void Start(ApplicationConfiguration configuration)
         {
-            MarketImageDetector marketImageDetector = new MarketImageDetector();
-
             Thread processThread = new Thread(async () =>
             {
-                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, marketImageDetector);
+                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, new MarketImageDetector());
                 while (isRunning)
                 {
                     DateTime startTime = DateTime.UtcNow;
@@ -132,7 +130,7 @@ namespace NW_Market_Collector
 
             Thread autoScreenshotThread = new Thread(() =>
             {
-                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(ConsoleHUD, marketImageDetector);
+                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(ConsoleHUD, new MarketImageDetector());
 
                 while (isRunning)
                 {
@@ -162,7 +160,7 @@ namespace NW_Market_Collector
                 }
                 else if (configuration.Mode == CollectorMode.Video)
                 {
-                    MarketImageGenerator marketImageGenerator = new VideoFileMarketImageGenerator(marketImageDetector, new VideoImageExtractor());
+                    MarketImageGenerator marketImageGenerator = new VideoFileMarketImageGenerator(new MarketImageDetector(), new VideoImageExtractor());
 
                     while (isRunning)
                     {
@@ -188,7 +186,6 @@ namespace NW_Market_Collector
             }
             finally
             {
-                marketImageDetector.Dispose();
                 processThread.Join();
             }
             Console.Write("Press enter to exit");

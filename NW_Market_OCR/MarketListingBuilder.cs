@@ -105,15 +105,15 @@ namespace NW_Market_OCR
 
         private Dictionary<int, List<OcrTextArea>> GroupTextAreasIntoLines(List<OcrTextArea> ocrTextAreas)
         {
-            Dictionary<int, List<OcrTextArea>> wordBucketsByHeight = new();
+            Dictionary<int?, List<OcrTextArea>> wordBucketsByHeight = new();
 
             foreach (OcrTextArea word in ocrTextAreas)
             {
                 try
                 {
                     // Find the group within N of the words Y value
-                    int yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
-                    if (wordBucketsByHeight.ContainsKey(yGroupKey))
+                    int? yGroupKey = wordBucketsByHeight.Keys.FirstOrDefault(yGroup => Math.Abs(yGroup.Value - word.Y) < ColumnMappings.WORD_BUCKET_Y_GROUPING_THRESHOLD);
+                    if (yGroupKey.HasValue && wordBucketsByHeight.ContainsKey(yGroupKey))
                     {
                         wordBucketsByHeight[yGroupKey].Add(word);
                     }
@@ -128,7 +128,7 @@ namespace NW_Market_OCR
                 }
             }
 
-            return wordBucketsByHeight;
+            return wordBucketsByHeight.Where(_ => _.Key.HasValue).ToDictionary(_ => _.Key.Value, _ => _.Value);
         }
 
         private class MarketColumnMappings

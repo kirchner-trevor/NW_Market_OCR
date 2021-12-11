@@ -35,12 +35,14 @@ namespace NW_Market_OCR
 
         private static List<ItemsPageData> itemsDatabase = new List<ItemsPageData>();
         private static string[] itemsNames = new string[0];
-        private static string[] locationNames = new[] { "Mountainhome", "Mountainrise", "Last Stand", "Cleave's Point", "Eastburn", "Valor Hold", "Mourningdale", "Brightwood", "Weaver's Fen", "Ebonscale Reach", "Everfall", "Restless Shore", "Monarch's Bluff", "Reekwater", "Windsward", "Cutlass Keys", "First Light" };
+        private static Dictionary<string, string> itemNameIds = new Dictionary<string, string>();
+        private static string[] locationNames = new string[0];
         private static List<ManualAutocorrect> manualAutocorrects = new List<ManualAutocorrect>
         {
             new ManualAutocorrect("Wyrdwood", 3, new[] { "Wymv", "WMwood" }),
         };
         private static MarketListingBuilder marketListingBuilder = new MarketListingBuilder();
+        private static TerritoryDatabase territoryDatabase;
 
         [STAThread]
         static async Task Main(string[] args)
@@ -64,23 +66,38 @@ namespace NW_Market_OCR
             NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY, config["nwdbinfo:UserAgent"]);
             itemsDatabase = await nwdbInfoApiClient.ListItemsAsync();
             itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
+            itemNameIds = itemsDatabase.GroupBy(_ => _.Name).Select(_ => _.OrderBy(item => item.Id).First()).ToDictionary(_ => _.Name, _ => _.Id);
+
+            territoryDatabase = new TerritoryDatabase();
+            locationNames = territoryDatabase.List().Select(_ => _.Names[0]).ToArray();
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
 
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
 
-            //MarketDatabase cleanedDatabase = new MarketDatabase(@"C:\Users\kirch\source\repos\NW_Market_OCR\Data");
-            //foreach (MarketListing marketListing in database.Listings)
+            //int serversPreviouslyProcessed = 1;
+            //int serversCurrentlyProcessed = serversPreviouslyProcessed;
+            //foreach (string server in Directory.GetDirectories(DATA_DIRECTORY).Select(_ => Path.GetFileName(_)).Skip(serversPreviouslyProcessed))
             //{
-            //    MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-            //    if (cleanedMarketListing.Name != null && cleanedMarketListing.Price != 0 && cleanedMarketListing.Available != 0)
+            //    database.SetServer(server);
+            //    database.LoadDatabaseFromDisk();
+
+            //    MarketDatabase cleanedDatabase = new MarketDatabase(DATA_DIRECTORY);
+            //    cleanedDatabase.SetServer(server);
+
+            //    foreach (MarketListing marketListing in database.Listings)
             //    {
-            //        cleanedDatabase.Listings.Add(cleanedMarketListing);
+            //        if (marketListing.Name != null)
+            //        {
+            //            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
+            //            cleanedDatabase.Listings.Add(cleanedMarketListing);
+            //        }
             //    }
+
+            //    cleanedDatabase.SaveDatabaseToDisk();
+            //    serversCurrentlyProcessed++;
             //}
-            //cleanedDatabase.SaveDatabaseToDisk();
-            //database = cleanedDatabase;
 
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
 
@@ -252,6 +269,10 @@ namespace NW_Market_OCR
                 Trace.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
             }
             marketListing.Name = newName;
+            if (marketListing.Name != null)
+            {
+                marketListing.NameId = itemNameIds.GetValueOrDefault(marketListing.Name, null);
+            }
 
             (string newLocation, int locationDistance) = Autocorrect(marketListing.Location, locationNames);
             if (locationDistance > 0)
@@ -259,11 +280,21 @@ namespace NW_Market_OCR
                 Trace.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
             }
             marketListing.Location = newLocation;
+            if (marketListing.Location != null)
+            {
+                marketListing.LocationId = territoryDatabase.Lookup(marketListing.Location)?.TerritoryId;
+            }
 
             if (marketListing.Latest.Available == 0)
             {
                 Trace.WriteLine($"Updating available from 0 to 1...");
                 marketListing.Latest.Available = 1;
+            }
+
+            if (marketListing.Latest.TimeRemaining == TimeSpan.Zero)
+            {
+                Trace.WriteLine($"Updating time remaining from 0 to 14 days...");
+                marketListing.Latest.TimeRemaining = TimeSpan.FromDays(14);
             }
 
             return marketListing;
@@ -287,7 +318,7 @@ namespace NW_Market_OCR
         {
             if (value == null || value.Length <= 3)
             {
-                return (null, -1);
+                return (value, -1);
             }
 
             string simplifyString(string complexString) => complexString?.Replace(" ", "").Replace("'", "").ToLowerInvariant() ?? string.Empty;
@@ -326,7 +357,7 @@ namespace NW_Market_OCR
             }
 
             // Distance is too far to use correction
-            if (minDistance > MAX_AUTOCORRECT_DISTANCE)
+            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance >= value.Length)
             {
                 return (null, -1);
             }
@@ -355,7 +386,7 @@ namespace NW_Market_OCR
                 newMarketListing.Latest.BatchId = batchId;
                 newMarketListing.Latest.Time = captureTime;
 
-                if (newMarketListing.Name != null && newMarketListing.Latest.TimeRemaining != default)
+                if (string.IsNullOrWhiteSpace(newMarketListing.Name) && newMarketListing.Latest.TimeRemaining != default)
                 {
                     marketListings.Add(newMarketListing);
                 }
