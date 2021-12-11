@@ -6,7 +6,7 @@ export default {
             <b-navbar-brand href="#/"><h2><b-icon-globe></b-icon-globe> <strong>NW Market</strong></h2></b-navbar-brand>
         </b-navbar>
         <b-card class="bg-light">
-            <p><em>View market listings, recipes, and more to come!</em></p>
+            <p><em>View market listings, recipes, and more to come!</em> Choose a server below to view the market data for that server.</p>
             <p>Interesting in contributing to the project? Check out the code on <b-link href="https://github.com/kirchner-trevor/NW_Market_OCR">GitHub</b-link>!</p>
             <p>You can also download the market collector to help keep the site up to date!</p>
             <b-button variant="primary" href="https://github.com/kirchner-trevor/NW_Market_OCR/releases/latest">Download</b-button>
