@@ -23,7 +23,7 @@ namespace NW_Market_OCR
 
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
-        private const int MAX_AUTOCORRECT_DISTANCE = 5;
+        private const int MAX_AUTOCORRECT_DISTANCE = 7;
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
 
@@ -75,105 +75,205 @@ namespace NW_Market_OCR
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
 
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
-
-            //int serversPreviouslyProcessed = 1;
-            //int serversCurrentlyProcessed = serversPreviouslyProcessed;
-            //foreach (string server in Directory.GetDirectories(DATA_DIRECTORY).Select(_ => Path.GetFileName(_)).Skip(serversPreviouslyProcessed))
-            //{
-            //    database.SetServer(server);
-            //    database.LoadDatabaseFromDisk();
-
-            //    MarketDatabase cleanedDatabase = new MarketDatabase(DATA_DIRECTORY);
-            //    cleanedDatabase.SetServer(server);
-
-            //    foreach (MarketListing marketListing in database.Listings)
-            //    {
-            //        if (marketListing.Name != null)
-            //        {
-            //            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-            //            cleanedDatabase.Listings.Add(cleanedMarketListing);
-            //        }
-            //    }
-
-            //    cleanedDatabase.SaveDatabaseToDisk();
-            //    serversCurrentlyProcessed++;
-            //}
+            
+            //CleanDatabase(database);
 
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
 
             while (true)
             {
-                ListObjectsResponse allMarketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
-                {
-                    BucketName = "nwmarketimages"
-                });
-
-                if (allMarketImages.S3Objects.Any())
-                {
-                    foreach (IGrouping<string, S3Object> serverMarketImages in allMarketImages.S3Objects.GroupBy(_ => _.Key.Split("/")?[0]))
-                    {
-                        string server = serverMarketImages.Key;
-                        database.SetServer(server);
-                        database.LoadDatabaseFromDisk();
-
-                        if (!itemsAddedToDatabase.ContainsKey(server))
-                        {
-                            itemsAddedToDatabase.Add(server, 0);
-                            lastDatabaseUploadTime.Add(server, database.Updated);
-                        }
-
-
-                        Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
-                        foreach (S3Object nwMarketImageObject in serverMarketImages)
-                        {
-                            GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
-                            {
-                                BucketName = nwMarketImageObject.BucketName,
-                                Key = nwMarketImageObject.Key,
-                            });
-
-                            string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                            await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                            DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
-                            string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
-                            Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
-
-                            UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
-
-                            await TryUploadDatabaseRateLimited(s3Client, database, server);
-
-                            BackupImageLocally(nwMarketImage, processedPath);
-
-                            await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                            {
-                                BucketName = nwMarketImageObject.BucketName,
-                                Key = nwMarketImageObject.Key,
-                            });
-                        }
-
-                        if (itemsAddedToDatabase[server] > 0)
-                        {
-                            Trace.WriteLine($"Found un-uploaded items after processing all images, forcing upload.");
-                            await TryUploadDatabaseRateLimited(s3Client, database, server, force: true);
-                        }
-                    }
-                }
-                else
-                {
-                    Trace.WriteLine($"[{DateTime.UtcNow}] No objects in any S3 bucket...");
-                }
+                await ProcessImagesFromS3(database, s3Client);
 
                 Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
                 Thread.Sleep(TimeSpan.FromMinutes(15));
             }
         }
 
-        private static void BackupImageLocally(GetObjectResponse nwMarketImage, string processedPath)
+        private static void CleanDatabase(MarketDatabase database)
+        {
+            int serversPreviouslyProcessed = 0;
+            int serversCurrentlyProcessed = serversPreviouslyProcessed;
+            foreach (string server in Directory.GetDirectories(DATA_DIRECTORY).Select(_ => Path.GetFileName(_)).Skip(serversPreviouslyProcessed))
+            {
+                database.SetServer(server);
+                database.LoadDatabaseFromDisk();
+
+                MarketDatabase cleanedDatabase = new MarketDatabase(DATA_DIRECTORY);
+                cleanedDatabase.SetServer(server);
+
+                foreach (MarketListing marketListing in database.Listings)
+                {
+                    if (!string.IsNullOrWhiteSpace(marketListing.Name) && (marketListing.Name?.Length ?? 0) >= 3)
+                    {
+                        if (marketListing.NameId != null && marketListing.LocationId != null)
+                        {
+                            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
+                            cleanedDatabase.Listings.Add(cleanedMarketListing);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(marketListing.OriginalName) && !string.IsNullOrWhiteSpace(marketListing.OriginalLocation))
+                        {
+                            if (marketListing.NameId == null)
+                            {
+                                marketListing.Name = marketListing.OriginalName;
+                            }
+
+                            if (marketListing.LocationId == null)
+                            {
+                                marketListing.Location = marketListing.OriginalLocation;
+                            }
+
+                            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
+
+                            if (marketListing.NameId != null && marketListing.LocationId != null)
+                            {
+                                cleanedDatabase.Listings.Add(cleanedMarketListing);
+                            }
+                            else
+                            {
+                                if (marketListing.LocationId == null)
+                                {
+                                    marketListing.Location = marketListing.OriginalLocation.Substring(0, marketListing.OriginalLocation.Length / 2);
+
+                                    cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
+
+                                    if (marketListing.NameId != null && marketListing.LocationId != null)
+                                    {
+                                        cleanedDatabase.Listings.Add(cleanedMarketListing);
+                                    }
+                                    else
+                                    {
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                cleanedDatabase.SaveDatabaseToDisk();
+                serversCurrentlyProcessed++;
+            }
+        }
+
+        private static async Task ProcessImagesFromS3(MarketDatabase database, AmazonS3Client s3Client)
+        {
+            ListObjectsResponse allMarketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
+            {
+                BucketName = "nwmarketimages"
+            });
+
+            if (allMarketImages.S3Objects.Any())
+            {
+                foreach (IGrouping<string, S3Object> serverMarketImages in allMarketImages.S3Objects.GroupBy(_ => _.Key.Split("/")?[0]))
+                {
+                    string server = serverMarketImages.Key;
+                    database.SetServer(server);
+                    database.LoadDatabaseFromDisk();
+
+                    if (!itemsAddedToDatabase.ContainsKey(server))
+                    {
+                        itemsAddedToDatabase.Add(server, 0);
+                        lastDatabaseUploadTime.Add(server, database.Updated);
+                    }
+
+
+                    Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
+                    foreach (S3Object nwMarketImageObject in serverMarketImages)
+                    {
+                        GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
+                        {
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
+
+                        string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                        await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
+                        DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
+                        string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
+                        Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
+
+                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+
+                        await TryUploadDatabaseRateLimited(s3Client, database, server);
+
+                        BackupImageLocally(nwMarketImage.Key, processedPath);
+
+                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
+                        {
+                            BucketName = nwMarketImageObject.BucketName,
+                            Key = nwMarketImageObject.Key,
+                        });
+                    }
+
+                    if (itemsAddedToDatabase[server] > 0)
+                    {
+                        Trace.WriteLine($"Found un-uploaded items after processing all images, forcing upload.");
+                        await TryUploadDatabaseRateLimited(s3Client, database, server, force: true);
+                    }
+                }
+            }
+            else
+            {
+                Trace.WriteLine($"[{DateTime.UtcNow}] No objects in any S3 bucket...");
+            }
+        }
+
+        private static async Task ProcessImagesLocally(MarketDatabase database, AmazonS3Client s3Client)
+        {
+            string[] allMarketImages = Directory.GetFiles("images", "*.png", SearchOption.AllDirectories);
+
+            if (allMarketImages.Any())
+            {
+                foreach (IGrouping<string, string> serverMarketImages in allMarketImages.GroupBy(_ => Path.GetFileName(Path.GetDirectoryName(_))))
+                {
+                    string server = serverMarketImages.Key;
+                    database.SetServer(server);
+                    database.LoadDatabaseFromDisk();
+
+                    if (!itemsAddedToDatabase.ContainsKey(server))
+                    {
+                        itemsAddedToDatabase.Add(server, 0);
+                        lastDatabaseUploadTime.Add(server, database.Updated);
+                    }
+
+                    Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
+                    foreach (string nwMarketImagePath in serverMarketImages)
+                    {
+                        FileMetadata fileMetadata = FileFormatMetadata.GetMetadataFromFile(nwMarketImagePath);
+
+                        string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
+                        DateTime captureTime = fileMetadata.CreationTime;
+                        string captureUser = "local";
+                        Trace.WriteLine($"Processing image '{nwMarketImagePath}' from '{captureUser}' at {captureTime}.");
+
+                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+
+                        await TryUploadDatabaseRateLimited(s3Client, database, server);
+
+                        BackupImageLocally(Path.Combine(server, Path.GetFileNameWithoutExtension(nwMarketImagePath)), processedPath);
+
+                        File.Delete(nwMarketImagePath);
+                    }
+
+                    if (itemsAddedToDatabase[server] > 0)
+                    {
+                        Trace.WriteLine($"Found un-uploaded items after processing all images, forcing upload.");
+                        await TryUploadDatabaseRateLimited(s3Client, database, server, force: true);
+                    }
+                }
+            }
+            else
+            {
+                Trace.WriteLine($"[{DateTime.UtcNow}] No images locally...");
+            }
+        }
+
+        private static void BackupImageLocally(string nwMarketImage, string processedPath)
         {
             if (File.Exists(processedPath))
             {
-                Trace.WriteLine($"Backing up image {nwMarketImage.Key} to processed folder.");
-                string backupDestination = Path.Combine(Directory.GetCurrentDirectory(), "processed", nwMarketImage.Key + ".png");
+                Trace.WriteLine($"Backing up image {nwMarketImage} to processed folder.");
+                string backupDestination = Path.Combine(Directory.GetCurrentDirectory(), "processed", nwMarketImage + ".png");
                 string processedDirectory = Path.GetDirectoryName(backupDestination);
                 Directory.CreateDirectory(processedDirectory);
                 string[] previouslyProcessedFiles = Directory.GetFiles(processedDirectory, "*", SearchOption.AllDirectories);
@@ -264,6 +364,12 @@ namespace NW_Market_OCR
         private static MarketListing ValidateAndFixMarketListing(MarketListing marketListing)
         {
             (string newName, int nameDistance) = Autocorrect(marketListing.Name, itemsNames);
+            if (nameDistance < 0)
+            {
+                marketListing.Name = marketListing.OriginalName?.Substring(0, marketListing.OriginalName.Length / 2);
+                Trace.WriteLine($"Couldn't find correction for name, halving name to '{marketListing.Name}' and trying again...");
+                (newName, nameDistance) = Autocorrect(marketListing.Name, itemsNames);
+            }
             if (nameDistance > 0)
             {
                 Trace.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
@@ -275,6 +381,12 @@ namespace NW_Market_OCR
             }
 
             (string newLocation, int locationDistance) = Autocorrect(marketListing.Location, locationNames);
+            if (locationDistance < 0)
+            {
+                marketListing.Location = marketListing.OriginalLocation?.Substring(0, marketListing.OriginalLocation.Length / 2);
+                Trace.WriteLine($"Couldn't find correction for location name, halving name to '{marketListing.Location}' and trying again...");
+                (newLocation, locationDistance) = Autocorrect(marketListing.Location, locationNames);
+            }
             if (locationDistance > 0)
             {
                 Trace.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
@@ -316,9 +428,9 @@ namespace NW_Market_OCR
 
         private static (string Value, int Distance) Autocorrect(string value, string[] potentialValues)
         {
-            if (value == null || value.Length <= 3)
+            if (value == null || value.Length < 3)
             {
-                return (value, -1);
+                return (null, -1);
             }
 
             string simplifyString(string complexString) => complexString?.Replace(" ", "").Replace("'", "").ToLowerInvariant() ?? string.Empty;
@@ -357,7 +469,7 @@ namespace NW_Market_OCR
             }
 
             // Distance is too far to use correction
-            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance >= value.Length)
+            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance > (value.Length))
             {
                 return (null, -1);
             }
@@ -386,13 +498,13 @@ namespace NW_Market_OCR
                 newMarketListing.Latest.BatchId = batchId;
                 newMarketListing.Latest.Time = captureTime;
 
-                if (string.IsNullOrWhiteSpace(newMarketListing.Name) && newMarketListing.Latest.TimeRemaining != default)
+                if (!string.IsNullOrWhiteSpace(newMarketListing.Name) && newMarketListing.Latest.TimeRemaining != default)
                 {
                     marketListings.Add(newMarketListing);
                 }
                 else
                 {
-                    Trace.WriteLine($"Omitting bad market listing {newMarketListing}");
+                    Trace.WriteLine($"Omitting bad market listing {newMarketListing.ToOriginalString()}");
                 }
             }
 
@@ -414,13 +526,13 @@ namespace NW_Market_OCR
                 }
                 else
                 {
-                    Trace.WriteLine($"Omitting bad market listing {marketListing}");
+                    Trace.WriteLine($"Omitting bad market listing {marketListing.ToOriginalString()}");
                 }
             }
 
             foreach (MarketListing marketListing in cleanedMarketListing)
             {
-                Trace.WriteLine($"{marketListing}");
+                Trace.WriteLine($"Adding market listing {marketListing}");
             }
 
             MergeSimilarListingsIntoDatabase(cleanedMarketListing, database);

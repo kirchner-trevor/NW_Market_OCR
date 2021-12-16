@@ -61,6 +61,7 @@ namespace NW_Stream_Collector
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
         private const int MINIMUM_RESOLUTION_FOR_PROCESSING = 1080;
+        private static readonly DateTime OLDEST_PROCESSING_DATE = DateTime.UtcNow.AddDays(-4);
         private readonly TwitchAPI twitchApi;
         private readonly StreamApiClient livestreamerApiClient;
         private readonly ConfigurationDatabase configurationDatabase;
@@ -106,17 +107,40 @@ namespace NW_Stream_Collector
                 bool hasMoreVideos = true;
                 DateTime oldestVideoCreateDate = DateTime.UtcNow;
 
-                while (hasMoreVideos && oldestVideoCreateDate > DateTime.UtcNow.AddDays(-7))
+                while (hasMoreVideos && oldestVideoCreateDate > OLDEST_PROCESSING_DATE)
                 {
-                    // Find list of videos for NW
-                    twitchApi.Settings.AccessToken = twitchApi.Auth.GetAccessToken();
-                    GetVideosResponse getVideosResponse = await twitchApi.Helix.Videos.GetVideoAsync(gameId: NEW_WORLD_GAME_ID, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive);
+                    Trace.TraceInformation($"[{DateTime.UtcNow}] Fetching next set of videos.");
+
+                    GetVideosResponse getVideosResponse = null;
+                    int twitchApiCallFailures = 0;
+                    while (getVideosResponse == null && twitchApiCallFailures < VIDEO_GET_FAILURES_MAX)
+                    {
+                        try
+                        {
+                            // Find list of videos for NW
+                            twitchApi.Settings.AccessToken = twitchApi.Auth.GetAccessToken();
+                            getVideosResponse = await twitchApi.Helix.Videos.GetVideoAsync(gameId: NEW_WORLD_GAME_ID, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive);
+                        }
+                        catch (Exception e)
+                        {
+                            twitchApiCallFailures++;
+
+                            int sleepTimeMs = (1 + new Random().Next((int)Math.Pow(2, twitchApiCallFailures))) * 1000;
+                            Trace.TraceInformation($"Twitch API call failed ({twitchApiCallFailures}), sleeping for {sleepTimeMs} ms then retrying.");
+                        }
+                    }
 
                     // For each video get the duration and then
                     // Download 1 second snippets every 5 minutes
                     foreach (Video video in getVideosResponse.Videos)
                     {
                         Trace.TraceInformation($"Started processing video {video.Id}");
+
+                        if (DateTime.Parse(video.CreatedAt).ToUniversalTime() < OLDEST_PROCESSING_DATE)
+                        {
+                            Trace.TraceInformation($"Too old video {video.Id} was created on {DateTime.Parse(video.CreatedAt).ToUniversalTime()}. Skipping.");
+                            continue;
+                        }
 
                         // We've already seen this video
                         if (processedVideos.Contains(video.Id))
@@ -158,6 +182,7 @@ namespace NW_Stream_Collector
                             //Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Processing as '{serverId}' server.");
                         }
 
+                        TimeSegment previousMarketSegment = null;
                         TimeSegment currentMarketSegment = null;
 
                         int videoGetFailures = 0;
@@ -182,6 +207,7 @@ namespace NW_Stream_Collector
                                 Trace.TraceInformation($"Downloading {TimeSpan.FromSeconds(1)} from {video.Id} at {TimeSpan.FromMinutes(startTimeMinutes)}.");
                                 livestreamerApiClient.Download($"twitch.tv/videos/{video.Id}", "best", videoPath, TimeSpan.FromMinutes(startTimeMinutes), TimeSpan.FromSeconds(1));
                                 downloadedVideo = true;
+                                videoGetFailures = 0;
                             }
                             catch (Exception)
                             {
@@ -220,32 +246,30 @@ namespace NW_Stream_Collector
                                     if (marketImageDetector.ImageContainsTradingPost(imagePath))
                                     {
                                         Trace.TraceInformation($"Image {imagePath} contained a blue banner.");
-                                        // If the previous segment didn't contain the market, create a new one
-                                        if (currentMarketSegment == null)
-                                        {
-                                            TimeSpan from = snippetStartTime - videoStartTime;
-                                            currentMarketSegment = new TimeSegment
-                                            {
-                                                VideoId = video.Id,
-                                                From = from,
-                                                To = from + TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS),
-                                            };
 
-                                            segmentsContainingMarket.Add(currentMarketSegment);
-                                        }
+                                        TimeSpan from = snippetStartTime - videoStartTime;
+                                        currentMarketSegment = new TimeSegment
+                                        {
+                                            VideoId = video.Id,
+                                            From = from,
+                                            To = from + TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS),
+                                        };
+
                                         // If the previous segment did contain the market, extend that segment
+                                        if (previousMarketSegment != null && Math.Abs(previousMarketSegment.ToMinutes - currentMarketSegment.FromMinutes) <= VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS)
+                                        {
+                                            previousMarketSegment.ToMinutes = currentMarketSegment.ToMinutes;
+                                            // Don't update the previous market segment since the previous was extended to be the current
+                                        }
+                                        // If the previous segment didn't contain the market, or overlap with this one, create a new one
                                         else
                                         {
-                                            currentMarketSegment.To += TimeSpan.FromMinutes(VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS);
+                                            segmentsContainingMarket.Add(currentMarketSegment);
+                                            previousMarketSegment = currentMarketSegment;
                                         }
 
                                         // Since we found a market image in this segment already, stop looking at this segment
                                         break;
-                                    }
-                                    else
-                                    {
-                                        // No market visible, split up segments
-                                        currentMarketSegment = null;
                                     }
 
                                     try
@@ -282,6 +306,7 @@ namespace NW_Stream_Collector
                         {
                             DownloadSegmentToCollectorFolder(video, serverId, videoStartTime, marketTimeSegment);
                         }
+                        segmentsContainingMarket.RemoveAll(_ => _.VideoId == video.Id);
 
                         Trace.TraceInformation($"Finished processing video {video.Id}.");
                         processedVideos.Add(video.Id);
@@ -319,6 +344,9 @@ namespace NW_Stream_Collector
             // Copy video segments over for the Market_Collector to run on
             string videoFileName = GetVideoFileName(GetVideoPrefix(video.UserLogin, video.Id, serverId), fileTime);
             string videoPath = Path.Combine(FULL_MARKET_VIDEO_OUTPUT_DIRECTORY, serverId, videoFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(videoPath));
+            string downloadPath = Path.Combine(VIDEO_OUTPUT_DIRECTORY, serverId, videoFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(downloadPath));
 
             int fullMarketVideoGetFailures = 0;
             bool downloadedVideo = false;
@@ -345,8 +373,8 @@ namespace NW_Stream_Collector
 
                     duration += TimeSpan.FromMinutes(durationExtensionMinutes);
 
-                    Trace.TraceInformation($"Downloading full market video {video.Id} from {startOffset} to {duration} to '{videoPath}'.");
-                    livestreamerApiClient.Download($"twitch.tv/videos/{video.Id}", "best", videoPath, startOffset, duration);
+                    Trace.TraceInformation($"Downloading full market video {video.Id} from {startOffset} to {duration} to '{downloadPath}'.");
+                    livestreamerApiClient.Download($"twitch.tv/videos/{video.Id}", "best", downloadPath, startOffset, duration);
                     downloadedVideo = true;
                 }
                 catch (Exception)
@@ -358,6 +386,20 @@ namespace NW_Stream_Collector
                         Trace.TraceError($"Failed to download full market video {video.Id} {VIDEO_GET_FAILURES_MAX} times. Skipping.");
                         break;
                     }
+                }
+            }
+
+            if (downloadedVideo)
+            {
+                Trace.TraceInformation($"Moving downloaded full market video to '{videoPath}'.");
+
+                if (!File.Exists(videoPath))
+                {
+                    File.Move(downloadPath, videoPath);
+                }
+                else
+                {
+                    Trace.TraceInformation($"File already exists at '{videoPath}', likely overlapping segments. Skipping.");
                 }
             }
         }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace NW_Market_Collector
 {
@@ -29,6 +30,8 @@ namespace NW_Market_Collector
             string[] videoPaths = Directory.GetFiles(videoDirectory, "*.mp4", SearchOption.AllDirectories);
             foreach (string videoPath in videoPaths)
             {
+                WaitWhileFileIsLocked(videoPath, TimeSpan.FromSeconds(30));
+
                 FileMetadata metadata = FileFormatMetadata.GetMetadataFromFile(videoPath); // TODO: Get "user" from file path as well
                 DateTime videoCaptureTime = metadata.CreationTime;
 
@@ -65,7 +68,7 @@ namespace NW_Market_Collector
                 }
 
                 string[] previouslyCompletedVideos = Directory.GetFiles(completedVideoDirectory, "*", SearchOption.AllDirectories);
-                if (previouslyCompletedVideos.Length >= 20)
+                if (previouslyCompletedVideos.Length >= 1)
                 {
                     string oldestFile = previouslyCompletedVideos.OrderBy(_ => File.GetCreationTimeUtc(_)).FirstOrDefault();
                     File.Delete(oldestFile);
@@ -74,6 +77,31 @@ namespace NW_Market_Collector
             }
 
             return generatedMarketImage;
+        }
+
+        private void WaitWhileFileIsLocked(string path, TimeSpan maximumWait)
+        {
+            DateTime startTime = DateTime.UtcNow;
+            while ((DateTime.UtcNow - startTime).TotalSeconds < maximumWait.TotalSeconds && IsFileLocked(path))
+            {
+                Trace.TraceInformation($"[{DateTime.UtcNow}] Waiting 1 second for locked file {path}.");
+                Thread.Sleep(TimeSpan.FromSeconds(1));
+            }
+        }
+
+        private bool IsFileLocked(string path)
+        {
+            try
+            {
+                using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    return false;
+                }
+            }
+            catch (IOException)
+            {
+                return true;
+            }
         }
     }
 }
