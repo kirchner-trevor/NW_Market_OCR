@@ -43,6 +43,8 @@ namespace NW_Market_OCR
         };
         private static MarketListingBuilder marketListingBuilder = new MarketListingBuilder();
         private static TerritoryDatabase territoryDatabase;
+        private static MarketOCRStatsRepository marketOCRStatsRepository = new MarketOCRStatsRepository(DATA_DIRECTORY);
+        private static MarketOCRStats marketOCRStats;
 
         [STAThread]
         static async Task Main(string[] args)
@@ -75,13 +77,17 @@ namespace NW_Market_OCR
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
 
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
-            
+            marketOCRStatsRepository.LoadDatabaseFromDisk();
+
             //CleanDatabase(database);
 
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
 
             while (true)
             {
+                marketOCRStats = new MarketOCRStats();
+                marketOCRStatsRepository.Contents.Stats.Add(marketOCRStats);
+
                 await ProcessImagesFromS3(database, s3Client);
 
                 Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
@@ -191,6 +197,7 @@ namespace NW_Market_OCR
                         DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
                         string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
                         Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
+                        marketOCRStats.ImagesProcessed += 1;
 
                         UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
 
@@ -203,6 +210,9 @@ namespace NW_Market_OCR
                             BucketName = nwMarketImageObject.BucketName,
                             Key = nwMarketImageObject.Key,
                         });
+
+                        marketOCRStats.To = DateTime.UtcNow;
+                        marketOCRStatsRepository.SaveDatabaseToDisk();
                     }
 
                     if (itemsAddedToDatabase[server] > 0)
@@ -373,6 +383,7 @@ namespace NW_Market_OCR
             if (nameDistance > 0)
             {
                 Trace.WriteLine($"Updating name from '{marketListing.Name}' to '{newName}' with distance {nameDistance}...");
+                marketOCRStats.MarketListingsCorrectedForName += 1;
             }
             marketListing.Name = newName;
             if (marketListing.Name != null)
@@ -390,6 +401,7 @@ namespace NW_Market_OCR
             if (locationDistance > 0)
             {
                 Trace.WriteLine($"Updating name from '{marketListing.Location}' to '{newLocation}' with distance {locationDistance}...");
+                marketOCRStats.MarketListingsCorrectedForLocation += 1;
             }
             marketListing.Location = newLocation;
             if (marketListing.Location != null)
@@ -401,12 +413,14 @@ namespace NW_Market_OCR
             {
                 Trace.WriteLine($"Updating available from 0 to 1...");
                 marketListing.Latest.Available = 1;
+                marketOCRStats.MarketListingsCorrectedForAvailable += 1;
             }
 
             if (marketListing.Latest.TimeRemaining == TimeSpan.Zero)
             {
                 Trace.WriteLine($"Updating time remaining from 0 to 14 days...");
                 marketListing.Latest.TimeRemaining = TimeSpan.FromDays(14);
+                marketOCRStats.MarketListingsCorrectedForTimeRemaining += 1;
             }
 
             return marketListing;
@@ -494,6 +508,8 @@ namespace NW_Market_OCR
             List<MarketListing> marketListings = new List<MarketListing>();
             foreach (MarketListing rawMarketListing in rawMarketListings)
             {
+                marketOCRStats.MarketListingsExtracted += 1;
+
                 MarketListing newMarketListing = ValidateAndFixMarketListing(rawMarketListing);
                 newMarketListing.Latest.BatchId = batchId;
                 newMarketListing.Latest.Time = captureTime;
@@ -505,6 +521,8 @@ namespace NW_Market_OCR
                 else
                 {
                     Trace.WriteLine($"Omitting bad market listing {newMarketListing.ToOriginalString()}");
+                    marketOCRStats.MarketListingsOmitted += 1;
+                    marketOCRStats.MarketListingsOmittedForName += 1;
                 }
             }
 
@@ -512,6 +530,7 @@ namespace NW_Market_OCR
 
             if (IsSimilarSetOfMarketListings(marketListings))
             {
+                marketOCRStats.ImagesSkippedForSimilarListings += 1;
                 return;
             }
 
@@ -527,6 +546,8 @@ namespace NW_Market_OCR
                 else
                 {
                     Trace.WriteLine($"Omitting bad market listing {marketListing.ToOriginalString()}");
+                    marketOCRStats.MarketListingsOmitted += 1;
+                    marketOCRStats.MarketListingsOmittedForPrice += 1;
                 }
             }
 
@@ -543,11 +564,12 @@ namespace NW_Market_OCR
             }
             else
             {
-                itemsAddedToDatabase.Add(database.GetServer(), 0);
+                itemsAddedToDatabase.Add(database.GetServer(), cleanedMarketListing.Count);
             }
 
             // Delete all entries that expired more than 8 days ago
-            database.Listings.RemoveAll(_ => _.Latest.Time + _.Latest.TimeRemaining < DateTime.UtcNow.AddDays(-8));
+            int listingsRemoved = database.Listings.RemoveAll(_ => _.Latest.Time + _.Latest.TimeRemaining < DateTime.UtcNow.AddDays(-8));
+            marketOCRStats.MarketListingsRemovedForExpiring += listingsRemoved;
 
             database.SaveDatabaseToDisk();
         }
@@ -577,18 +599,21 @@ namespace NW_Market_OCR
                             Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {next.Value}");
                             marketListings[i].Price = next.Value;
                             updatedPrice = true;
+                            marketOCRStats.MarketListingsCorrectedForPrice += 1;
                         }
                         else if (isLast && previous.HasValue && previous.Value != 0)
                         {
                             Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {previous.Value}");
                             marketListings[i].Price = previous.Value;
                             updatedPrice = true;
+                            marketOCRStats.MarketListingsCorrectedForPrice += 1;
                         }
                         else if (marketListings.Count >= 3 && !isFirst && !isLast && next.Value != 0 && previous.Value != 0)
                         {
                             Trace.WriteLine($"Corrected price for '{marketListings[i].Name}' from {marketListings[i].Price} to {(((next.Value - previous.Value) / 2f) + previous.Value)}");
                             marketListings[i].Price = ((next.Value - previous.Value) / 2f) + previous.Value;
                             updatedPrice = true;
+                            marketOCRStats.MarketListingsCorrectedForPrice += 1;
                         }
                     }
 
@@ -687,11 +712,13 @@ namespace NW_Market_OCR
                 if (bestMatch == null)
                 {
                     database.Listings.Add(newMarketListing);
+                    marketOCRStats.MarketListingsAdded += 1;
                 }
                 else
                 {
                     bestMatch.MergeIntoThis(newMarketListing);
                     matchedMarketListings.Add(bestMatch);
+                    marketOCRStats.MarketListingsUpdated += 1;
                 }
             }
         }

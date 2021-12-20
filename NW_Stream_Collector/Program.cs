@@ -36,7 +36,8 @@ namespace NW_Stream_Collector
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
             MarketImageDetector marketImageDetector = new MarketImageDetector();
             VideoImageExtractor videoImageExtractor = new VideoImageExtractor();
-            StreamCollector streamCollector = new StreamCollector(twitchApi, streamApiClient, configurationDatabase, marketImageDetector, videoImageExtractor);
+            StreamCollectorStatsRepository streamCollectorStatsRepository = new StreamCollectorStatsRepository(DATA_DIRECTORY);
+            StreamCollector streamCollector = new StreamCollector(twitchApi, streamApiClient, configurationDatabase, marketImageDetector, videoImageExtractor, streamCollectorStatsRepository);
 
             try
             {
@@ -61,22 +62,24 @@ namespace NW_Stream_Collector
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
         private const int MINIMUM_RESOLUTION_FOR_PROCESSING = 1080;
-        private static readonly DateTime OLDEST_PROCESSING_DATE = DateTime.UtcNow.AddDays(-4);
+        private static readonly DateTime OLDEST_PROCESSING_DATE = DateTime.UtcNow.AddDays(-6);
         private readonly TwitchAPI twitchApi;
         private readonly StreamApiClient livestreamerApiClient;
         private readonly ConfigurationDatabase configurationDatabase;
         private readonly MarketImageDetector marketImageDetector;
         private readonly VideoImageExtractor videoImageExtractor;
+        private readonly StreamCollectorStatsRepository streamCollectorStatsRepository;
 
         private readonly Dictionary<string, string> serverNamesLowercase;
 
-        public StreamCollector(TwitchAPI twitchApi, StreamApiClient livestreamerApiClient, ConfigurationDatabase configurationDatabase, MarketImageDetector marketImageDetector, VideoImageExtractor videoImageExtractor)
+        public StreamCollector(TwitchAPI twitchApi, StreamApiClient livestreamerApiClient, ConfigurationDatabase configurationDatabase, MarketImageDetector marketImageDetector, VideoImageExtractor videoImageExtractor, StreamCollectorStatsRepository streamCollectorStatsRepository)
         {
             this.twitchApi = twitchApi;
             this.livestreamerApiClient = livestreamerApiClient;
             this.configurationDatabase = configurationDatabase;
             this.marketImageDetector = marketImageDetector;
             this.videoImageExtractor = videoImageExtractor;
+            this.streamCollectorStatsRepository = streamCollectorStatsRepository;
 
             serverNamesLowercase = this.configurationDatabase.Content.ServerList.Where(_ => _.Name != "Ophir").ToDictionary(_ => _.Name?.ToLowerInvariant(), _ => _.Id);
         }
@@ -101,8 +104,13 @@ namespace NW_Stream_Collector
                 segmentsContainingMarket = JsonSerializer.Deserialize<List<TimeSegment>>(File.ReadAllText(MARKET_SEGMENTS_PATH));
             }
 
-            while(true)
+            streamCollectorStatsRepository.LoadDatabaseFromDisk();
+
+            while (true)
             {
+                StreamCollectorStats streamCollectorStats = new StreamCollectorStats();
+                streamCollectorStatsRepository.Contents.Stats.Add(streamCollectorStats);
+
                 string cursor = null; // Start with the latest videos
                 bool hasMoreVideos = true;
                 DateTime oldestVideoCreateDate = DateTime.UtcNow;
@@ -120,6 +128,7 @@ namespace NW_Stream_Collector
                             // Find list of videos for NW
                             twitchApi.Settings.AccessToken = twitchApi.Auth.GetAccessToken();
                             getVideosResponse = await twitchApi.Helix.Videos.GetVideoAsync(gameId: NEW_WORLD_GAME_ID, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive);
+                            streamCollectorStats.VideosFound += getVideosResponse.Videos.Length;
                         }
                         catch (Exception e)
                         {
@@ -141,6 +150,7 @@ namespace NW_Stream_Collector
                             Trace.TraceInformation($"Too old video {video.Id} was created on {DateTime.Parse(video.CreatedAt).ToUniversalTime()}. Skipping.");
                             continue;
                         }
+                        streamCollectorStats.VideosRecentlyCreated += 1;
 
                         // We've already seen this video
                         if (processedVideos.Contains(video.Id))
@@ -148,6 +158,7 @@ namespace NW_Stream_Collector
                             Trace.TraceInformation($"Already processed video {video.Id}. Skipping.");
                             continue;
                         }
+                        streamCollectorStats.VideosNewToProcess += 1;
 
                         // Filter videos to only those with server names in them
                         string serverId = TryExtractServer(video.Title + " " + video.Description, out string server) ? server : null;
@@ -161,7 +172,9 @@ namespace NW_Stream_Collector
                             else if (serverId != authorInfo.ServerId)
                             {
                                 Trace.TraceWarning($"Author {authorInfo.Id} has videos on multiple servers: {serverId}, {authorInfo.ServerId}. Preferring server in video title.");
+                                streamCollectorStats.VideosWithServerInfoInTitle += 1;
                             }
+                            streamCollectorStats.VideosWithServerInfoOnRecord += 1;
                         }
                         else if (serverId != null)
                         {
@@ -173,6 +186,7 @@ namespace NW_Stream_Collector
                             };
                             authorInfos.Add(authorId, authorInfo);
                             File.WriteAllText(AUTHOR_INFO_PATH, JsonSerializer.Serialize(authorInfos));
+                            streamCollectorStats.VideosWithServerInfoInTitle += 1;
                         }
                         else
                         {
@@ -181,12 +195,15 @@ namespace NW_Stream_Collector
                             //serverId = "unknown";
                             //Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Processing as '{serverId}' server.");
                         }
+                        streamCollectorStats.VideosWithServerInfo += 1;
 
                         TimeSegment previousMarketSegment = null;
                         TimeSegment currentMarketSegment = null;
 
                         int videoGetFailures = 0;
                         int durationMinutes = (int)ParseDuration(video.Duration).TotalMinutes;
+                        streamCollectorStats.VideoMinutesSearched += durationMinutes;
+                        streamCollectorStats.VideosWithHighResolution += 1;
                         DateTime videoStartTime = DateTime.Parse(video.CreatedAt).ToUniversalTime();
                         for (int startTimeMinutes = 0; startTimeMinutes <= durationMinutes; startTimeMinutes += VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS)
                         {
@@ -235,6 +252,7 @@ namespace NW_Stream_Collector
                                     {
                                         if (firstImage.Height < MINIMUM_RESOLUTION_FOR_PROCESSING)
                                         {
+                                            streamCollectorStats.VideosWithHighResolution -= 1;
                                             Trace.TraceWarning($"Video {video.Id} has a vertical resolution of {firstImage.Height} which is too small to process, skipping video.");
                                             break;
                                         }
@@ -302,17 +320,26 @@ namespace NW_Stream_Collector
                         }
 
                         // Re-download the full segments of video when the market was visible
-                        foreach (TimeSegment marketTimeSegment in segmentsContainingMarket.Where(_ => _.VideoId == video.Id))
+                        if (segmentsContainingMarket.Any(_ => _.VideoId == video.Id))
                         {
-                            DownloadSegmentToCollectorFolder(video, serverId, videoStartTime, marketTimeSegment);
+                            streamCollectorStats.VideosShowingMarket += 1;
+                            foreach (TimeSegment marketTimeSegment in segmentsContainingMarket.Where(_ => _.VideoId == video.Id))
+                            {
+                                DownloadSegmentToCollectorFolder(video, serverId, videoStartTime, marketTimeSegment);
+                                streamCollectorStats.VideoSegmentsShowingMarket += 1;
+                                streamCollectorStats.VideoMinutesShowingMarket += (marketTimeSegment.ToMinutes - marketTimeSegment.FromMinutes);
+                            }
+                            segmentsContainingMarket.RemoveAll(_ => _.VideoId == video.Id);
                         }
-                        segmentsContainingMarket.RemoveAll(_ => _.VideoId == video.Id);
 
                         Trace.TraceInformation($"Finished processing video {video.Id}.");
                         processedVideos.Add(video.Id);
                         File.WriteAllText(PROCESSED_VIDEOS_PATH, JsonSerializer.Serialize(processedVideos));
 
                         File.WriteAllText(MARKET_SEGMENTS_PATH, JsonSerializer.Serialize(segmentsContainingMarket));
+
+                        streamCollectorStats.To = DateTime.UtcNow;
+                        streamCollectorStatsRepository.SaveDatabaseToDisk();
                     }
 
                     hasMoreVideos = getVideosResponse.Videos.Any();
