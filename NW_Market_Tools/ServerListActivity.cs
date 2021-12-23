@@ -2,10 +2,8 @@
 using Amazon.S3.Model;
 using NW_Market_Model;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace NW_Market_Tools
@@ -14,15 +12,15 @@ namespace NW_Market_Tools
     {
         private readonly ConfigurationDatabase configurationDatabase;
         private readonly AmazonS3Client s3Client;
-        private readonly ItemDatabase itemDatabase;
+        private readonly MarketDatabase marketDatabase;
 
         private DateTime lastUpdateDate;
 
-        public ServerListActivity(ConfigurationDatabase configurationDatabase, AmazonS3Client s3Client, ItemDatabase itemDatabase)
+        public ServerListActivity(ConfigurationDatabase configurationDatabase, AmazonS3Client s3Client, MarketDatabase itemDatabase)
         {
             this.configurationDatabase = configurationDatabase;
             this.s3Client = s3Client;
-            this.itemDatabase = itemDatabase;
+            this.marketDatabase = itemDatabase;
         }
 
 
@@ -34,12 +32,12 @@ namespace NW_Market_Tools
 
             foreach (ServerListInfo serverListInfo in configurationDatabase.Content.ServerList)
             {
-                itemDatabase.SetServer(serverListInfo.Id);
-                itemDatabase.LoadDatabaseFromDisk();
+                marketDatabase.SetServer(serverListInfo.Id);
+                marketDatabase.LoadDatabaseFromDisk();
 
-                if (itemDatabase.Contents != null && itemDatabase.Contents.Updated > lastUpdateDate)
+                if (marketDatabase.Updated > lastUpdateDate)
                 {
-                    serverListInfo.Listings = itemDatabase.Contents.Items.Sum(_ => _.DailyStats[0].NumListings);
+                    serverListInfo.Listings = marketDatabase.Listings.Count(_ => _.IsFresh());
                     didUpdate = true;
                 }
             }

@@ -1,13 +1,10 @@
 ﻿using Amazon.S3;
 using Amazon.S3.Model;
 using NW_Market_Model;
-using NwdbInfoApi;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace NW_Market_Tools
@@ -31,13 +28,16 @@ namespace NW_Market_Tools
 
         public async Task Run(string server)
         {
+            itemDatabase.SetServer(server);
+            itemDatabase.LoadDatabaseFromDisk();
+
+            lastUpdateDate = itemDatabase?.Contents?.Updated ?? DateTime.MinValue;
+
             marketDatabase.SetServer(server);
             marketDatabase.LoadDatabaseFromDisk();
 
             if (marketDatabase.Updated > lastUpdateDate)
             {
-                lastUpdateDate = marketDatabase.Updated;
-
                 List<ItemStats> itemStats = new List<ItemStats>();
                 foreach (IGrouping<string, MarketListing> listings in marketDatabase.Listings.GroupBy(_ => _.Name))
                 {
@@ -70,7 +70,6 @@ namespace NW_Market_Tools
                 Items = itemStats,
                 Updated = DateTime.UtcNow,
             };
-            itemDatabase.SetServer(server);
             itemDatabase.SaveDatabaseToDisk();
 
             Trace.WriteLine($"Uploading item data for server {server}...");

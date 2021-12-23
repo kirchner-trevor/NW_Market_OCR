@@ -79,8 +79,6 @@ namespace NW_Market_OCR
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
             marketOCRStatsRepository.LoadDatabaseFromDisk();
 
-            //CleanDatabase(database);
-
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
 
             while (true)
@@ -92,72 +90,6 @@ namespace NW_Market_OCR
 
                 Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
                 Thread.Sleep(TimeSpan.FromMinutes(15));
-            }
-        }
-
-        private static void CleanDatabase(MarketDatabase database)
-        {
-            int serversPreviouslyProcessed = 0;
-            int serversCurrentlyProcessed = serversPreviouslyProcessed;
-            foreach (string server in Directory.GetDirectories(DATA_DIRECTORY).Select(_ => Path.GetFileName(_)).Skip(serversPreviouslyProcessed))
-            {
-                database.SetServer(server);
-                database.LoadDatabaseFromDisk();
-
-                MarketDatabase cleanedDatabase = new MarketDatabase(DATA_DIRECTORY);
-                cleanedDatabase.SetServer(server);
-
-                foreach (MarketListing marketListing in database.Listings)
-                {
-                    if (!string.IsNullOrWhiteSpace(marketListing.Name) && (marketListing.Name?.Length ?? 0) >= 3)
-                    {
-                        if (marketListing.NameId != null && marketListing.LocationId != null)
-                        {
-                            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-                            cleanedDatabase.Listings.Add(cleanedMarketListing);
-                        }
-                        else if (!string.IsNullOrWhiteSpace(marketListing.OriginalName) && !string.IsNullOrWhiteSpace(marketListing.OriginalLocation))
-                        {
-                            if (marketListing.NameId == null)
-                            {
-                                marketListing.Name = marketListing.OriginalName;
-                            }
-
-                            if (marketListing.LocationId == null)
-                            {
-                                marketListing.Location = marketListing.OriginalLocation;
-                            }
-
-                            MarketListing cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-
-                            if (marketListing.NameId != null && marketListing.LocationId != null)
-                            {
-                                cleanedDatabase.Listings.Add(cleanedMarketListing);
-                            }
-                            else
-                            {
-                                if (marketListing.LocationId == null)
-                                {
-                                    marketListing.Location = marketListing.OriginalLocation.Substring(0, marketListing.OriginalLocation.Length / 2);
-
-                                    cleanedMarketListing = ValidateAndFixMarketListing(marketListing);
-
-                                    if (marketListing.NameId != null && marketListing.LocationId != null)
-                                    {
-                                        cleanedDatabase.Listings.Add(cleanedMarketListing);
-                                    }
-                                    else
-                                    {
-
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                cleanedDatabase.SaveDatabaseToDisk();
-                serversCurrentlyProcessed++;
             }
         }
 
@@ -483,7 +415,7 @@ namespace NW_Market_OCR
             }
 
             // Distance is too far to use correction
-            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance > (value.Length))
+            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance > (value.Length / 2f))
             {
                 return (null, -1);
             }

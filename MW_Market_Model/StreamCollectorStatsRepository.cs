@@ -38,5 +38,6 @@ namespace NW_Market_Model
         public int VideoMinutesSearched { get; set; }
         public int VideoSegmentsShowingMarket { get; set; }
         public int VideoMinutesShowingMarket { get; set; }
+        public long VideoBytesDownloaded { get; set; }
     }
 }

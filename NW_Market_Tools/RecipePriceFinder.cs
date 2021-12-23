@@ -45,6 +45,8 @@ namespace NW_Market_Tools
 
         public async Task Run(string server)
         {
+            lastUpdateDate = File.GetLastWriteTimeUtc(Path.Combine(DATA_DIRECTORY, server, "recipeSuggestions.json"));
+
             itemDatabase.SetServer(server);
             itemDatabase.LoadDatabaseFromDisk();
 
@@ -52,8 +54,6 @@ namespace NW_Market_Tools
             {
                 Trace.WriteLine($"Updating recipes for server {server}");
                 Trace.WriteLine($"Items: {itemDatabase.Contents.Items.Count}");
-
-                lastUpdateDate = itemDatabase.Contents.Updated;
 
                 NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY);
                 List<ItemsPageData> items = await nwdbInfoApiClient.ListItemsAsync();

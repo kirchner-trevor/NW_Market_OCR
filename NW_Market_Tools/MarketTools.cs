@@ -38,7 +38,7 @@ namespace NW_Market_Tools
 
             IMarketTool[] globalTools = new IMarketTool[]
             {
-                new ServerListActivity(configurationDatabase, s3Client, itemDatabase),
+                new ServerListActivity(configurationDatabase, s3Client, marketDatabase),
             };
 
             while (true)
@@ -56,8 +56,8 @@ namespace NW_Market_Tools
                     await tool.Run(null);
                 }
 
-                Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
-                Thread.Sleep((int)TimeSpan.FromMinutes(15).TotalMilliseconds);
+                Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 30 minutes!");
+                Thread.Sleep((int)TimeSpan.FromMinutes(30).TotalMilliseconds);
             }
         }
     }

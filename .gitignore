@@ -367,3 +367,4 @@ NW_Market_Tools/Properties/launchSettings.json
 NW_Market_Website/NW_Market_Collector.zip
 /StreamApi/streamlink
 /NW_Stream_Collector/Properties/launchSettings.json
+*.zip
