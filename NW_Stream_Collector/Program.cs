@@ -135,21 +135,59 @@ namespace NW_Stream_Collector
 
                 foreach (Video video in twitchVideos)
                 {
-                    long totalBytesDownloadedInLastDay = streamCollectorStatsRepository.Contents.Stats.Where(_ => _.To > DateTime.UtcNow.AddDays(-1)).Sum(_ => _.VideoBytesDownloaded);
-                    Trace.TraceInformation($"StreamCollector has downloaded {totalBytesDownloadedInLastDay / 1_000_000_000f} Gb in the last 24 hours!");
-                    if (totalBytesDownloadedInLastDay >= DAILY_DOWNLOAD_BYTE_LIMIT)
-                    {
-                        Trace.TraceInformation($"Passed daily download limit of {DAILY_DOWNLOAD_BYTE_LIMIT / 1_000_000_000f} Gb. Sleeping for 1 day.");
-                        Thread.Sleep(TimeSpan.FromDays(1));
-                        break;
-                    }
-
+                    WaitIfTotalBytesDownloadedIsAboveThreshold();
                     FindMarketSegments(video, processedVideos, authorInfos, segmentsContainingMarket, streamCollectorStats);
                 }
 
                 Trace.TraceInformation($"Sleeping for 1 hour before processing again...");
                 Thread.Sleep(TimeSpan.FromHours(1));
             }
+        }
+
+        private void WaitIfTotalBytesDownloadedIsAboveThreshold()
+        {
+            long totalBytesDownloadedInLastDay;
+            do
+            {
+                totalBytesDownloadedInLastDay = GetTotalBytesDownloadedInLastDay();
+                Trace.TraceInformation($"StreamCollector has downloaded {totalBytesDownloadedInLastDay / 1_000_000_000f} Gb in the last 24 hours!");
+                if (totalBytesDownloadedInLastDay >= DAILY_DOWNLOAD_BYTE_LIMIT)
+                {
+                    Trace.TraceInformation($"Passed daily download limit of {DAILY_DOWNLOAD_BYTE_LIMIT / 1_000_000_000f} Gb. Sleeping for 1 hours.");
+                    Thread.Sleep(TimeSpan.FromHours(1));
+                }
+            } while (totalBytesDownloadedInLastDay >= DAILY_DOWNLOAD_BYTE_LIMIT);
+        }
+
+        private long GetTotalBytesDownloadedInLastDay()
+        {
+            long totalBytes = 0;
+            double totalHoursSummed = 0;
+            DateTime oneDayAgo = DateTime.UtcNow.AddDays(-1);
+            foreach(StreamCollectorStats stats in streamCollectorStatsRepository.Contents.Stats.Where(_ => _.To >= oneDayAgo).OrderByDescending(_ => _.To))
+            {
+                TimeSpan duration = stats.To - stats.From;
+
+                if (duration.TotalHours == 0)
+                {
+                    continue;
+                }
+
+                if (totalHoursSummed + duration.TotalHours >= 24f)
+                {
+                    double bytesPerHour = stats.VideoBytesDownloaded / duration.TotalHours;
+                    double applicableDurationHours = totalHoursSummed + duration.TotalHours - 24f;
+                    totalHoursSummed += applicableDurationHours; 
+                    totalBytes += (long)(applicableDurationHours * bytesPerHour);
+                    break;
+                }
+                else
+                {
+                    totalHoursSummed += duration.TotalHours;
+                    totalBytes += stats.VideoBytesDownloaded;
+                }
+            }
+            return totalBytes;
         }
 
         // For each video get the duration and then

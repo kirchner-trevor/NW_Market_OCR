@@ -25,7 +25,7 @@ namespace NW_Market_Model
     public class StreamCollectorStats
     {
         public DateTime From { get; set; } = DateTime.UtcNow;
-        public DateTime To { get; set; }
+        public DateTime To { get; set; } = DateTime.UtcNow;
 
         public int VideosFound { get; set; }
         public int VideosRecentlyCreated { get; set; }
