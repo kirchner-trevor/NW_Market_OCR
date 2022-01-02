@@ -25,13 +25,8 @@ namespace NW_Market_OCR
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
         private const int MAX_AUTOCORRECT_DISTANCE = 7;
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
+        private const string IMAGES_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data\Images";
         private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
-
-        // TODO: Create a companion app that is an "offline" market that allows better searching and give info like "cost to craft" and "exp / cost", etc
-
-        // TODO: Change the app to collect screenshots frequently while in the market, but do the OCR in another thread (treating each screenshot as a queue of work to be completed)
-
-        // TODO: Generate "trade-routes" where it generates a trip plan where you buy/sell items at each stop in an efficient way (e.g. In Windsward Sell Ironhide & Buy Silkweed, Then in Monarch's Bluff Sell Silkweek & Buy Iron Ore, Then in Everfall...)
 
         private static List<ItemsPageData> itemsDatabase = new List<ItemsPageData>();
         private static string[] itemsNames = new string[0];
@@ -80,29 +75,29 @@ namespace NW_Market_OCR
             marketOCRStatsRepository.LoadDatabaseFromDisk();
 
             AmazonS3Client s3Client = new AmazonS3Client(s3Config.AccessKeyId, s3Config.SecretAccessKey, RegionEndpoint.USEast2);
+            MarketImageRepository localMarketImageRepository = new FileSystemMarketImageRepository(IMAGES_DIRECTORY);
+            MarketImageRepository remoteMarketImageRepository = new S3MarketImageRepository(s3Client);
 
             while (true)
             {
                 marketOCRStats = new MarketOCRStats();
                 marketOCRStatsRepository.Contents.Stats.Add(marketOCRStats);
 
-                await ProcessImagesFromS3(database, s3Client);
+                await ProcessImages(database, s3Client, localMarketImageRepository);
+                await ProcessImages(database, s3Client, remoteMarketImageRepository);
 
                 Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
                 Thread.Sleep(TimeSpan.FromMinutes(15));
             }
         }
 
-        private static async Task ProcessImagesFromS3(MarketDatabase database, AmazonS3Client s3Client)
+        private static async Task ProcessImages(MarketDatabase database, AmazonS3Client s3Client, MarketImageRepository marketImageRepository)
         {
-            ListObjectsResponse allMarketImages = await s3Client.ListObjectsAsync(new ListObjectsRequest
-            {
-                BucketName = "nwmarketimages"
-            });
+            List<MarketImage> allMarketImages = await marketImageRepository.List();
 
-            if (allMarketImages.S3Objects.Any())
+            if (allMarketImages.Any())
             {
-                foreach (IGrouping<string, S3Object> serverMarketImages in allMarketImages.S3Objects.GroupBy(_ => _.Key.Split("/")?[0]))
+                foreach (IGrouping<string, MarketImage> serverMarketImages in allMarketImages.GroupBy(_ => _.Server))
                 {
                     string server = serverMarketImages.Key;
                     database.SetServer(server);
@@ -114,35 +109,21 @@ namespace NW_Market_OCR
                         lastDatabaseUploadTime.Add(server, database.Updated);
                     }
 
-
                     Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
-                    foreach (S3Object nwMarketImageObject in serverMarketImages)
+                    foreach (MarketImage nwMarketImage in serverMarketImages)
                     {
-                        GetObjectResponse nwMarketImage = await s3Client.GetObjectAsync(new GetObjectRequest
-                        {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
-
                         string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                        await nwMarketImage.WriteResponseStreamToFileAsync(processedPath, false, new CancellationToken());
-                        DateTime captureTime = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-timestamp") ? DateTime.Parse(nwMarketImage.Metadata["x-amz-meta-timestamp"]) : DateTime.UtcNow;
-                        string captureUser = nwMarketImage.Metadata.Keys.Contains("x-amz-meta-user") ? nwMarketImage.Metadata["x-amz-meta-user"] : null;
-                        Trace.WriteLine($"Processing image '{nwMarketImage.Key}' from '{captureUser}' at {captureTime}.");
+                        await nwMarketImage.SaveTo(processedPath);
+                        Trace.WriteLine($"Processing image '{nwMarketImage.Server}/{nwMarketImage.Id}' from '{nwMarketImage.Metadata.User}' at {nwMarketImage.Metadata.Timestamp}.");
                         marketOCRStats.ImagesProcessed += 1;
 
-                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
+                        UpdateDatabaseWithMarketListings(database, processedPath, nwMarketImage.Metadata.Timestamp);
 
                         await TryUploadDatabaseRateLimited(s3Client, database, server);
 
-                        BackupImageLocally(nwMarketImage.Key, processedPath);
+                        BackupImageLocally(nwMarketImage, processedPath);
 
-                        await s3Client.DeleteObjectAsync(new DeleteObjectRequest
-                        {
-                            BucketName = nwMarketImageObject.BucketName,
-                            Key = nwMarketImageObject.Key,
-                        });
-
+                        await nwMarketImage.Delete();
                         marketOCRStats.To = DateTime.UtcNow;
                         marketOCRStatsRepository.SaveDatabaseToDisk();
                     }
@@ -156,66 +137,16 @@ namespace NW_Market_OCR
             }
             else
             {
-                Trace.WriteLine($"[{DateTime.UtcNow}] No objects in any S3 bucket...");
+                Trace.WriteLine($"[{DateTime.UtcNow}] No objects when searching {marketImageRepository}...");
             }
         }
 
-        private static async Task ProcessImagesLocally(MarketDatabase database, AmazonS3Client s3Client)
-        {
-            string[] allMarketImages = Directory.GetFiles("images", "*.png", SearchOption.AllDirectories);
-
-            if (allMarketImages.Any())
-            {
-                foreach (IGrouping<string, string> serverMarketImages in allMarketImages.GroupBy(_ => Path.GetFileName(Path.GetDirectoryName(_))))
-                {
-                    string server = serverMarketImages.Key;
-                    database.SetServer(server);
-                    database.LoadDatabaseFromDisk();
-
-                    if (!itemsAddedToDatabase.ContainsKey(server))
-                    {
-                        itemsAddedToDatabase.Add(server, 0);
-                        lastDatabaseUploadTime.Add(server, database.Updated);
-                    }
-
-                    Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
-                    foreach (string nwMarketImagePath in serverMarketImages)
-                    {
-                        FileMetadata fileMetadata = FileFormatMetadata.GetMetadataFromFile(nwMarketImagePath);
-
-                        string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");
-                        DateTime captureTime = fileMetadata.CreationTime;
-                        string captureUser = "local";
-                        Trace.WriteLine($"Processing image '{nwMarketImagePath}' from '{captureUser}' at {captureTime}.");
-
-                        UpdateDatabaseWithMarketListings(database, processedPath, captureTime);
-
-                        await TryUploadDatabaseRateLimited(s3Client, database, server);
-
-                        BackupImageLocally(Path.Combine(server, Path.GetFileNameWithoutExtension(nwMarketImagePath)), processedPath);
-
-                        File.Delete(nwMarketImagePath);
-                    }
-
-                    if (itemsAddedToDatabase[server] > 0)
-                    {
-                        Trace.WriteLine($"Found un-uploaded items after processing all images, forcing upload.");
-                        await TryUploadDatabaseRateLimited(s3Client, database, server, force: true);
-                    }
-                }
-            }
-            else
-            {
-                Trace.WriteLine($"[{DateTime.UtcNow}] No images locally...");
-            }
-        }
-
-        private static void BackupImageLocally(string nwMarketImage, string processedPath)
+        private static void BackupImageLocally(MarketImage nwMarketImage, string processedPath)
         {
             if (File.Exists(processedPath))
             {
                 Trace.WriteLine($"Backing up image {nwMarketImage} to processed folder.");
-                string backupDestination = Path.Combine(Directory.GetCurrentDirectory(), "processed", nwMarketImage + ".png");
+                string backupDestination = Path.Combine(Directory.GetCurrentDirectory(), "processed", nwMarketImage.Server, nwMarketImage.Id + ".png");
                 string processedDirectory = Path.GetDirectoryName(backupDestination);
                 Directory.CreateDirectory(processedDirectory);
                 string[] previouslyProcessedFiles = Directory.GetFiles(processedDirectory, "*", SearchOption.AllDirectories);
@@ -224,7 +155,7 @@ namespace NW_Market_OCR
                     string oldestFile = previouslyProcessedFiles.OrderBy(_ => File.GetCreationTimeUtc(_)).FirstOrDefault();
                     File.Delete(oldestFile);
                 }
-                File.Move(processedPath, backupDestination);
+                File.Move(processedPath, backupDestination, overwrite: true);
             }
         }
 

@@ -1,4 +1,5 @@
 ﻿using NW_Image_Analysis;
+using NW_Market_Model;
 using OpenCvSharp;
 using System;
 using System.Collections.Generic;
@@ -32,11 +33,11 @@ namespace NW_Market_Collector
             {
                 WaitWhileFileIsLocked(videoPath, TimeSpan.FromSeconds(30));
 
-                FileMetadata metadata = FileFormatMetadata.GetMetadataFromFile(videoPath); // TODO: Get "user" from file path as well
+                FileMetadata metadata = FileFormatMetadata.GetMetadataFromFile(videoPath);
                 DateTime videoCaptureTime = metadata.CreationTime;
 
                 string capturesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "captures");
-                IEnumerable<string> marketImagePaths = VideoImageExtractor.Extract(videoPath, videoCaptureTime, capturesDirectory, $"{metadata.ServerId ?? "unknown"}_"); // TODO: Process 5 second intervals looking for market, then 0.5 second intervals until market isn't found again
+                IEnumerable<string> marketImagePaths = VideoImageExtractor.Extract(videoPath, videoCaptureTime, capturesDirectory, $"{metadata.User ?? "unknown"}_{metadata.ServerId ?? "unknown"}_"); // TODO: Process 5 second intervals looking for market, then 0.5 second intervals until market isn't found again
 
                 foreach (string marketImagePath in marketImagePaths)
                 {

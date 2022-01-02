@@ -1,4 +1,7 @@
-﻿using NW_Image_Analysis;
+﻿using Amazon;
+using Amazon.Runtime;
+using Amazon.S3;
+using NW_Image_Analysis;
 using NW_Market_Model;
 using System;
 using System.Diagnostics;
@@ -6,7 +9,6 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace NW_Market_Collector
 {
@@ -16,6 +18,7 @@ namespace NW_Market_Collector
         private const int OUT_OF_MARKET_DELAY = 5_000;
         private const int FILE_PROCESSING_DELAY = 30_000;
         private const string LOG_FILE_NAME = "log.txt";
+        private const string IMAGES_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data\Images";
 
         private static volatile bool isRunning = true;
 
@@ -29,7 +32,7 @@ namespace NW_Market_Collector
             LatestTextBlob = "",
         };
 
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase();
 
@@ -115,7 +118,18 @@ namespace NW_Market_Collector
         {
             Thread processThread = new Thread(async () =>
             {
-                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, new MarketImageDetector());
+                MarketImageWriteOnlyRepository marketImageWriteOnlyRepository;
+                if (Directory.Exists(IMAGES_DIRECTORY))
+                {
+                    marketImageWriteOnlyRepository = new FileSystemMarketImageWriteOnlyRepository(IMAGES_DIRECTORY); ;
+                }
+                else
+                {
+                    AmazonS3Client s3Client = new AmazonS3Client(configuration.GetAccessKeyId(), configuration.GetSecretAccessKey(), RegionEndpoint.USEast2);
+                    marketImageWriteOnlyRepository = new S3MarketImageWriteOnlyRepository(s3Client, UpdateProgress);
+                }
+
+                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, new MarketImageDetector(), marketImageWriteOnlyRepository);
                 while (isRunning)
                 {
                     DateTime startTime = DateTime.UtcNow;
@@ -198,6 +212,11 @@ namespace NW_Market_Collector
             int timeToWait = Math.Clamp(totalTimeToPass - timePassed, 0, totalTimeToPass);
             Trace.WriteLine($"\tWaiting for {timeToWait}ms...");
             Thread.Sleep(timeToWait);
+        }
+
+        private static void UpdateProgress(object sender, StreamTransferProgressArgs e)
+        {
+            ConsoleHUD.Progress = e.PercentDone;
         }
     }
 }

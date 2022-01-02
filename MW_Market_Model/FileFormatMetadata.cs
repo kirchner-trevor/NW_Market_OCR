@@ -5,7 +5,7 @@ namespace NW_Market_Model
 {
     public static class FileFormatMetadata
     {
-        public static FileMetadata GetMetadataFromFile(string path, string serverDefault = null)
+        public static FileMetadata GetMetadataFromFile(string path, string serverDefault = null, string userDefault = null)
         {
             FileMetadata metadata = new FileMetadata();
 
@@ -23,6 +23,20 @@ namespace NW_Market_Model
 
             if (fileNameParts.Length >= 3)
             {
+                string[] streamProcessorMetadata = fileNameParts[^3].Split("-");
+
+                if (streamProcessorMetadata.Length >= 1)
+                {
+                    metadata.User = streamProcessorMetadata[0];
+                }
+            }
+            else
+            {
+                metadata.User = userDefault;
+            }
+
+            if (fileNameParts.Length >= 2)
+            {
                 metadata.ServerId = fileNameParts[^2];
             }
             else
@@ -38,5 +52,6 @@ namespace NW_Market_Model
     {
         public DateTime CreationTime { get; set; }
         public string ServerId { get; set; }
+        public string User { get; set; }
     }
 }
