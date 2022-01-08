@@ -191,6 +191,141 @@ namespace NW_Market_OCR_Tests
             AssertListings(marketDatabase, expectedListings);
         }
 
+        [TestMethod]
+        public async Task UpdateDatabaseWithMarketListings_Doubleline_1177x643_Image()
+        {
+            MarketDatabase marketDatabase = new MarketDatabase(Directory.GetCurrentDirectory());
+            DateTime captureTime = DateTime.UtcNow;
+            await MarketOCR.Initialize(null);
+            MarketOCR.UpdateDatabaseWithMarketListings(marketDatabase, Path.Combine(Directory.GetCurrentDirectory(), "TestImages", "1177x643_doubleline.png"), captureTime);
+
+            MarketListing[] expectedListings = new[]
+            {
+                new MarketListing
+                {
+                    Name = "Dazzling Coral Dye",
+                    Price = 38.99f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromDays(9),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Recipe: Bacon-Wrapped Scallops",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(2),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Recipe: Citrus Tart",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(3),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Warm Slime Dye",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 4,
+                            TimeRemaining = TimeSpan.FromHours(4),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Recipe: Roasted Wolf Loin",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(5),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Recipe: Smoked Rib Cap with Cabbage Barley Soup",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(6),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Recipe: Cheesecake",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(9),
+                            Time = captureTime,
+                        },
+                    },
+                },
+                new MarketListing
+                {
+                    Name = "Burnished Lilac Dye",
+                    Price = 39.00f,
+                    Location = "Everfall",
+                    Instances = new List<MarketListingInstance>
+                    {
+                        new MarketListingInstance
+                        {
+                            Available = 1,
+                            TimeRemaining = TimeSpan.FromHours(11),
+                            Time = captureTime,
+                        },
+                    },
+                },
+            };
+
+            AssertListings(marketDatabase, expectedListings);
+        }
+
         private static void AssertListings(MarketDatabase marketDatabase, MarketListing[] expectedListings)
         {
             Assert.AreEqual(expectedListings.Length, marketDatabase.Listings.Count);
@@ -206,12 +341,12 @@ namespace NW_Market_OCR_Tests
 
         private static void AssertMarketListingsAreEqual(MarketListing expected, MarketListing actual)
         {
-            Assert.AreEqual(expected.Latest.Time, actual.Latest.Time);
-            Assert.AreEqual(expected.Name, actual.Name);
-            Assert.AreEqual(expected.Price, actual.Price);
-            Assert.AreEqual(expected.Latest.Available, actual.Latest.Available);
-            Assert.AreEqual(expected.Latest.TimeRemaining, actual.Latest.TimeRemaining);
-            Assert.AreEqual(expected.Location, actual.Location);
+            Assert.AreEqual(expected.Latest.Time, actual.Latest.Time, $"{expected.Name}.{nameof(expected.Latest.Time)}");
+            Assert.AreEqual(expected.Name, actual.Name, $"{expected.Name}.{nameof(expected.Name)}");
+            Assert.AreEqual(expected.Price, actual.Price, $"{expected.Name}.{nameof(expected.Price)}");
+            Assert.AreEqual(expected.Latest.Available, actual.Latest.Available, $"{expected.Name}.{nameof(expected.Latest.Available)}");
+            Assert.AreEqual(expected.Latest.TimeRemaining, actual.Latest.TimeRemaining, $"{expected.Name}.{nameof(expected.Latest.TimeRemaining)}");
+            Assert.AreEqual(expected.Location, actual.Location, $"{expected.Name}.{nameof(expected.Location)}");
         }
     }
 }

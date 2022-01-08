@@ -51,7 +51,7 @@ namespace NW_Market_OCR
                     {
                         float widthRatio = ColumnMappings.AVAILABLE_TEXT_X_RANGE.Size * 1f / word.Width;
                         int numCharactersInsideRange = (int)Math.Ceiling(widthRatio * word.Text.Length);
-                        cleanedWord = word.Text.Substring(0, numCharactersInsideRange);
+                        cleanedWord = word.Text.Substring(0, Math.Min(word.Text.Length, numCharactersInsideRange));
                     }
 
                     if (int.TryParse(cleanedWord, out int available))
