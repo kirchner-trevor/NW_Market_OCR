@@ -30,34 +30,45 @@ namespace NW_Market_OCR
         {
             MarketListing marketListing = new MarketListing();
 
-            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.OCR_KIND_DECIMALS))
+            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.NUMBERS))
             {
                 if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.OriginalPrice = word.Text;
                     if (float.TryParse(word.Text, out float price))
                     {
-                        marketListing.Price = price;
+                        marketListing.Price = price / 100f;
+                    }
+                }
+                else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
+                {
+                    marketListing.Latest.OriginalAvailable = word.Text;
+
+                    string cleanedWord = word.Text;
+
+                    // Ocr combined available and owned together so split them
+                    if(word.X + word.Width > ColumnMappings.AVAILABLE_TEXT_X_RANGE.End)
+                    {
+                        float widthRatio = ColumnMappings.AVAILABLE_TEXT_X_RANGE.Size * 1f / word.Width;
+                        int numCharactersInsideRange = (int)Math.Ceiling(widthRatio * word.Text.Length);
+                        cleanedWord = word.Text.Substring(0, numCharactersInsideRange);
+                    }
+
+                    if (int.TryParse(cleanedWord, out int available))
+                    {
+                        marketListing.Latest.Available = available;
                     }
                 }
             }
 
-            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.OCR_KIND_LETTERS))
+            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.LETTERS))
             {
                 if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
                 {
                     // Sometimes the name gets split into pieces
                     marketListing.OriginalName = marketListing.OriginalName == null ? word.Text : marketListing.OriginalName + " " + word.Text;
                     marketListing.Name = marketListing.OriginalName;
-                }
-                else if (ColumnMappings.AVAILABLE_TEXT_X_RANGE.Contains(word.X))
-                {
-                    marketListing.Latest.OriginalAvailable = word.Text;
-                    if (int.TryParse(word.Text, out int available))
-                    {
-                        marketListing.Latest.Available = available;
-                    }
-                }
+                }     
                 else if (ColumnMappings.TIME_REMAINING_TEXT_X_RANGE.Contains(word.X))
                 {
                     marketListing.Latest.OriginalTimeRemaining = word.Text;
@@ -138,14 +149,14 @@ namespace NW_Market_OCR
             private static Point DEFAULT_SIZE = new Point(1130, 730);
 
             // Pixel Coordinates (1px to either side)
-            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(4, 272);
+            private Range DEFAULT_NAME_TEXT_X_RANGE = new Range(0, 272); // Originally 4, 272
             private Range DEFAULT_PRICE_TEXT_X_RANGE = new Range(314, 385);
             private Range DEFAULT_TEIR_TEXT_X_RANGE = new Range(426, 443);
             private Range DEFAULT_GEARSCORE_TEXT_X_RANGE = new Range(485, 512);
             private Range DEFAULT_QUALITY_TEXT_X_RANGE = new Range(732, 804);
             private Range DEFAULT_AVAILABLE_TEXT_X_RANGE = new Range(823, 867);
             private Range DEFAULT_TIME_REMAINING_TEXT_X_RANGE = new Range(954, 985);
-            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1019, 1114);
+            private Range DEFAULT_LOCATION_TEXT_X_RANGE = new Range(1019, 1130); // Originally 1019, 1114
 
             private int DEFAULT_WORD_BUCKET_Y_GROUPING_THRESHOLD = 15;
 
@@ -192,6 +203,13 @@ namespace NW_Market_OCR
 
             public int Start;
             public int End;
+            public int Size
+            {
+                get
+                {
+                    return End - Start;
+                }
+            }
 
             public bool Contains(int value)
             {

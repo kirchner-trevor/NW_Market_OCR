@@ -36,7 +36,20 @@ namespace NW_Market_OCR
         private static MarketListingBuilder marketListingBuilder = new MarketListingBuilder();
         private static TerritoryDatabase territoryDatabase;
         private static MarketOCRStatsRepository marketOCRStatsRepository = new MarketOCRStatsRepository(DATA_DIRECTORY);
-        private static MarketOCRStats marketOCRStats;
+        private static MarketOCRStats marketOCRStats = new MarketOCRStats();
+
+        public static async Task Initialize(string userAgent)
+        {
+            Trace.WriteLine($"Loading item database...");
+            NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY, userAgent);
+            itemsDatabase = await nwdbInfoApiClient.ListItemsAsync();
+            itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
+            itemNameIds = itemsDatabase.GroupBy(_ => _.Name).Select(_ => _.OrderBy(item => item.Id).First()).ToDictionary(_ => _.Name, _ => _.Id);
+
+            Trace.WriteLine($"Loading territory database...");
+            territoryDatabase = new TerritoryDatabase();
+            locationNames = territoryDatabase.List().Select(_ => _.Names[0]).ToArray();
+        }
 
         [STAThread]
         static async Task Main(string[] args)
@@ -56,14 +69,7 @@ namespace NW_Market_OCR
                 SecretAccessKey = config["S3:SecretAccessKey"],
             };
 
-            Trace.WriteLine($"Loading item database...");
-            NwdbInfoApiClient nwdbInfoApiClient = new NwdbInfoApiClient(DATA_DIRECTORY, config["nwdbinfo:UserAgent"]);
-            itemsDatabase = await nwdbInfoApiClient.ListItemsAsync();
-            itemsNames = itemsDatabase.Select(_ => _.Name).ToArray();
-            itemNameIds = itemsDatabase.GroupBy(_ => _.Name).Select(_ => _.OrderBy(item => item.Id).First()).ToDictionary(_ => _.Name, _ => _.Id);
-
-            territoryDatabase = new TerritoryDatabase();
-            locationNames = territoryDatabase.List().Select(_ => _.Names[0]).ToArray();
+            await Initialize(config["nwdbinfo:UserAgent"]);
 
             // Assume the local copy of the database is the latest since we should be the only ones updating it
             MarketDatabase database = new MarketDatabase(DATA_DIRECTORY);
