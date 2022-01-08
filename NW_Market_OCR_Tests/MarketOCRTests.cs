@@ -192,12 +192,12 @@ namespace NW_Market_OCR_Tests
         }
 
         [TestMethod]
-        public async Task UpdateDatabaseWithMarketListings_Doubleline_1177x643_Image()
+        public async Task UpdateDatabaseWithMarketListings_Doubleline_1077x643_Image()
         {
             MarketDatabase marketDatabase = new MarketDatabase(Directory.GetCurrentDirectory());
             DateTime captureTime = DateTime.UtcNow;
             await MarketOCR.Initialize(null);
-            MarketOCR.UpdateDatabaseWithMarketListings(marketDatabase, Path.Combine(Directory.GetCurrentDirectory(), "TestImages", "1177x643_doubleline.png"), captureTime);
+            MarketOCR.UpdateDatabaseWithMarketListings(marketDatabase, Path.Combine(Directory.GetCurrentDirectory(), "TestImages", "1077x643_doubleline.png"), captureTime);
 
             MarketListing[] expectedListings = new[]
             {
