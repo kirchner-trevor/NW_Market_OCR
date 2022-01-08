@@ -4,11 +4,10 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Text.RegularExpressions;
-using Tesseract;
 
 namespace NW_Image_Analysis
 {
-    public class MarketImageDetector : IDisposable
+    public class MarketImageDetector
     {
         private Rectangle DEFAULT_MARKET_AREA = new Rectangle { X = 696, Y = 326, Width = 1130, Height = 730 };
         private Point DEFAULT_SCREEN_SIZE = new Point(1920, 1080);
@@ -21,7 +20,12 @@ namespace NW_Image_Analysis
         private int TRADING_POST_HEADER_TEXT_THRESHOLD = 7;
 
         private readonly Regex whitespaceRegex = new Regex(@"\s+");
-        private TesseractEngine tesseractEngine = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata"), "eng", EngineMode.Default);
+        private readonly OcrEngine ocrEngine;
+
+        public MarketImageDetector(OcrEngine ocrEngine)
+        {
+            this.ocrEngine = ocrEngine;
+        }
 
         public bool ImageContainsTradingPost(string path)
         {
@@ -56,18 +60,14 @@ namespace NW_Image_Analysis
         {
             ScreenAdjustmentParameters screenAdjustments = GetScreenAdjustmentsForWindow(myBitmap.Width, myBitmap.Height);
             Rectangle tradingPostHeaderArea = screenAdjustments.Adjust(DEFAULT_TRADING_POST_HEADER_AREA);
-            Rect ocrArea = new Rect(tradingPostHeaderArea.X, tradingPostHeaderArea.Y, tradingPostHeaderArea.Width, tradingPostHeaderArea.Height);
 
-            using (Pix image = PixConverter.ToPix(myBitmap))
-            using (Page page = tesseractEngine.Process(image, ocrArea))
-            {
-                string text = whitespaceRegex.Replace(page.GetText(), "");
-                Fastenshtein.Levenshtein nameLevenshtein = new Fastenshtein.Levenshtein(text);
-                int distance = nameLevenshtein.DistanceFrom(TRADING_POST_HEADER_TEXT);
-                bool containsShortText = text.ToUpperInvariant().Contains(TRADING_POST_HEADER_SHORT_TEXT);
-                bool isWithinDistance = distance < TRADING_POST_HEADER_TEXT_THRESHOLD;
-                return containsShortText || isWithinDistance;
-            }
+            string ocrText = ocrEngine.ExtractText(myBitmap, tradingPostHeaderArea);
+            string text = whitespaceRegex.Replace(ocrText, "");
+            Fastenshtein.Levenshtein nameLevenshtein = new Fastenshtein.Levenshtein(text);
+            int distance = nameLevenshtein.DistanceFrom(TRADING_POST_HEADER_TEXT);
+            bool containsShortText = text.ToUpperInvariant().Contains(TRADING_POST_HEADER_SHORT_TEXT);
+            bool isWithinDistance = distance < TRADING_POST_HEADER_TEXT_THRESHOLD;
+            return containsShortText || isWithinDistance;
         }
 
         private bool ImageContainsBlueBanner(Bitmap myBitmap)
@@ -174,46 +174,6 @@ namespace NW_Image_Analysis
 
             Trace.WriteLine($"Cleaned image saved to '{processedPath}'");
             return processedPath;
-        }
-
-        public string ExtractTextContent(string processedPath)
-        {
-            using (Pix image = Pix.LoadFromFile(processedPath))
-            using (Page page = tesseractEngine.Process(image))
-            {
-                return page.GetText();
-            }
-        }
-
-        private bool disposedValue;
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    tesseractEngine?.Dispose();
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
-                disposedValue = true;
-            }
-        }
-
-        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        // ~MarketCollector()
-        // {
-        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        //     Dispose(disposing: false);
-        // }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
         }
     }
 }

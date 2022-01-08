@@ -1,4 +1,5 @@
-﻿using NW_Market_Model;
+﻿using NW_Image_Analysis;
+using NW_Market_Model;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,7 +30,7 @@ namespace NW_Market_OCR
         {
             MarketListing marketListing = new MarketListing();
 
-            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == MarketOCR.OCR_KIND_DECIMALS))
+            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.OCR_KIND_DECIMALS))
             {
                 if (ColumnMappings.PRICE_TEXT_X_RANGE.Contains(word.X))
                 {
@@ -41,7 +42,7 @@ namespace NW_Market_OCR
                 }
             }
 
-            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == MarketOCR.OCR_KIND_LETTERS))
+            foreach (OcrTextArea word in ocrTextAreas.Where(_ => _.Kind == OcrKind.OCR_KIND_LETTERS))
             {
                 if (ColumnMappings.NAME_TEXT_X_RANGE.Contains(word.X))
                 {

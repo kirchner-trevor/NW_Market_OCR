@@ -2,6 +2,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
+using NW_Image_Analysis;
 using NW_Market_Model;
 using NwdbInfoApi;
 using System;
@@ -12,21 +13,17 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Tesseract;
 
 namespace NW_Market_OCR
 {
     public class MarketOCR
     {
-        public const string OCR_KIND_DECIMALS = "decimals";
-        public const string OCR_KIND_LETTERS = "letters";
-
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
         private const int MAX_AUTOCORRECT_DISTANCE = 7;
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
         private const string IMAGES_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data\Images";
-        private static Func<string, List<OcrTextArea>> OCR_ENGINE = RunTesseractOcr; //RunIronOcr;
+        private static OcrEngine ocrEngine = new TesseractOcrEngine();
 
         private static List<ItemsPageData> itemsDatabase = new List<ItemsPageData>();
         private static string[] itemsNames = new string[0];
@@ -192,48 +189,6 @@ namespace NW_Market_OCR
             public string SecretAccessKey { get; set; }
         }
 
-        private static TesseractEngine tesseractEngineForDecimals = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/normal"), "eng", EngineMode.TesseractOnly);
-        private static TesseractEngine tesseractOcrForLetters = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/best"), "eng", EngineMode.Default);
-
-        private static List<OcrTextArea> RunTesseractOcr(string processedPath)
-        {
-            tesseractEngineForDecimals.SetVariable("whitelist", ".,0123456789");
-            List<OcrTextArea> textAreas = new List<OcrTextArea>();
-            textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_DECIMALS, tesseractEngineForDecimals));
-            textAreas.AddRange(RunTesseractOcr(processedPath, OCR_KIND_LETTERS, tesseractOcrForLetters));
-            return textAreas;
-        }
-
-        private static List<OcrTextArea> RunTesseractOcr(string processedPath, string source, TesseractEngine tesseractEngine)
-        {
-            List<OcrTextArea> textAreas = new();
-
-            using (Pix image = Pix.LoadFromFile(processedPath))
-            {
-                using (Page page = tesseractEngine.Process(image))
-                {
-                    using (ResultIterator resultIterator = page.GetIterator())
-                    {
-                        do
-                        {
-                            if (resultIterator.TryGetBoundingBox(PageIteratorLevel.Word, out Rect bounds))
-                            {
-                                textAreas.Add(new OcrTextArea
-                                {
-                                    Text = resultIterator.GetText(PageIteratorLevel.Word),
-                                    X = bounds.X1,
-                                    Y = bounds.Y1,
-                                    Kind = source,
-                                });
-                            }
-                        } while (resultIterator.Next(PageIteratorLevel.Word));
-                    }
-                }
-            }
-
-            return textAreas;
-        }
-
         private static MarketListing ValidateAndFixMarketListing(MarketListing marketListing)
         {
             (string newName, int nameDistance) = Autocorrect(marketListing.Name, itemsNames);
@@ -364,7 +319,7 @@ namespace NW_Market_OCR
                 imageSize = new Point(image.Width, image.Height);
             }
 
-            List<MarketListing> rawMarketListings = marketListingBuilder.BuildFromMany(OCR_ENGINE(processedPath), imageSize.X, imageSize.Y);
+            List<MarketListing> rawMarketListings = marketListingBuilder.BuildFromMany(ocrEngine.ExtractTextAreas(processedPath), imageSize.X, imageSize.Y);
 
             string batchId = Guid.NewGuid().ToString("D");
 
@@ -621,13 +576,5 @@ namespace NW_Market_OCR
         //        }
         //    }
         //}
-    }
-
-    public class OcrTextArea
-    {
-        public int X;
-        public int Y;
-        public string Text;
-        public string Kind;
     }
 }

@@ -34,7 +34,8 @@ namespace NW_Stream_Collector
 
             StreamApiClient streamApiClient = new StreamApiClient();
             ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
-            MarketImageDetector marketImageDetector = new MarketImageDetector();
+            OcrEngine ocrEngine = new TesseractOcrEngine();
+            MarketImageDetector marketImageDetector = new MarketImageDetector(ocrEngine);
             VideoImageExtractor videoImageExtractor = new VideoImageExtractor();
             StreamCollectorStatsRepository streamCollectorStatsRepository = new StreamCollectorStatsRepository(DATA_DIRECTORY);
             TwitchStreamMetadata twitchStreamMetadata = new TwitchStreamMetadata(configurationDatabase);

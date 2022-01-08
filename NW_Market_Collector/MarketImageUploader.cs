@@ -1,8 +1,4 @@
-﻿using Amazon;
-using Amazon.Runtime;
-using Amazon.S3;
-using Amazon.S3.Model;
-using Fastenshtein;
+﻿using Fastenshtein;
 using NW_Image_Analysis;
 using NW_Market_Model;
 using System;
@@ -28,13 +24,15 @@ namespace NW_Market_Collector
         private readonly ConsoleHUDWriter ConsoleHUD;
         private readonly MarketImageDetector MarketImageDetector;
         private readonly MarketImageWriteOnlyRepository MarketImageWriteOnlyRepository;
+        private readonly OcrEngine OcrEngine;
 
-        public MarketImageUploader(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector, MarketImageWriteOnlyRepository marketImageWriteOnlyRepository)
+        public MarketImageUploader(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector, MarketImageWriteOnlyRepository marketImageWriteOnlyRepository, OcrEngine ocrEngine)
         {
             Configuration = configuration;
             ConsoleHUD = consoleHUDWriter;
             MarketImageDetector = marketImageDetector;
             MarketImageWriteOnlyRepository = marketImageWriteOnlyRepository;
+            OcrEngine = ocrEngine;
         }
 
         public async Task ProcessMarketImages()
@@ -61,7 +59,7 @@ namespace NW_Market_Collector
             ConsoleHUD.ProcessorStatus = "Processing Market Data";
 
             string processedPath = MarketImageDetector.CleanInputImage(path, Configuration.IsCustomMarketArea() ? (Rectangle)Configuration.CustomMarketArea : null);
-            string textContent = CleanTextContent(MarketImageDetector.ExtractTextContent(processedPath));
+            string textContent = CleanTextContent(OcrEngine.ExtractText(processedPath));
 
             if (IsTextContentNew(textContent, NEW_TEXT_CONTENT_THRESHOLD))
             {
