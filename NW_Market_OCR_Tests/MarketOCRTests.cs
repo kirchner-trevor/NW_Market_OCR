@@ -191,6 +191,7 @@ namespace NW_Market_OCR_Tests
             AssertListings(marketDatabase, expectedListings);
         }
 
+        // Test is failing because adjusted columns for image aren't lining up, cropping might be broken
         [TestMethod]
         public async Task UpdateDatabaseWithMarketListings_Doubleline_1077x643_Image()
         {
