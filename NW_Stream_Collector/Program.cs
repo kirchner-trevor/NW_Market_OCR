@@ -195,6 +195,7 @@ namespace NW_Stream_Collector
         private void FindMarketSegments(Video video, List<string> processedVideos, Dictionary<string, AuthorInfo> authorInfos, List<TimeSegment> segmentsContainingMarket, StreamCollectorStats streamCollectorStats)
         {
             Trace.TraceInformation($"Started processing video {video.Id}");
+            streamCollectorStats.VideosThatStartedProcessing += 1;
 
             if (DateTime.Parse(video.CreatedAt).ToUniversalTime() < OLDEST_PROCESSING_DATE)
             {

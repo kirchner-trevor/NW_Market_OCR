@@ -8,8 +8,11 @@ export default {
         <b-card class="bg-light">
             <p><em>View market listings, recipes, and more to come!</em> Choose a server below to view the market data for that server.</p>
             <p>Interesting in contributing to the project? Check out the code on <b-link href="https://github.com/kirchner-trevor/NW_Market_OCR">GitHub</b-link>!</p>
-            <p>You can also download the market collector to help keep the site up to date!</p>
+            <p>Stream on <b-img id="tooltip-twitch-info" style="width: 4rem;" src="/images/TwitchExtrudedWordmarkPurple.svg"></b-img> or download the market collector to help keep the site up to date!</p>
             <b-button variant="primary" href="https://github.com/kirchner-trevor/NW_Market_OCR/releases/latest">Download</b-button>
+            <b-tooltip target="tooltip-twitch-info" triggers="hover">
+                Stream at 1080p+ and include your server name in the title.
+            </b-tooltip>
         </b-card>
         </br>
         <b-card no-body>

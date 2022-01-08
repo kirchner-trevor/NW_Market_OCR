@@ -28,6 +28,7 @@ namespace NW_Market_Model
         public DateTime To { get; set; } = DateTime.UtcNow;
 
         public int VideosFound { get; set; }
+        public int VideosThatStartedProcessing { get; set; }
         public int VideosRecentlyCreated { get; set; }
         public int VideosNewToProcess { get; set; }
         public int VideosWithServerInfo { get; set; }
