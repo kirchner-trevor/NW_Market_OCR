@@ -65,8 +65,9 @@ namespace NW_Stream_Collector
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
         private const int MINIMUM_RESOLUTION_FOR_PROCESSING = 1080;
-        private const long DAILY_DOWNLOAD_BYTE_LIMIT = 10_000_000_000; // 10gb
-        private static readonly DateTime OLDEST_PROCESSING_DATE = DateTime.UtcNow.AddDays(-8);
+        private const long DAILY_DOWNLOAD_BYTE_LIMIT = 20_000_000_000; // 20gb
+        private static readonly TimeSpan OLDEST_PROCESSING_DATE = TimeSpan.FromDays(-8);
+        private static readonly TimeSpan OLDEST_AUTHORINFO_DATE = TimeSpan.FromDays(-30);
         private readonly TwitchAPI twitchApi;
         private readonly StreamApiClient livestreamerApiClient;
         private readonly ConfigurationDatabase configurationDatabase;
@@ -198,7 +199,7 @@ namespace NW_Stream_Collector
             Trace.TraceInformation($"Started processing video {video.Id}");
             streamCollectorStats.VideosThatStartedProcessing += 1;
 
-            if (DateTime.Parse(video.CreatedAt).ToUniversalTime() < OLDEST_PROCESSING_DATE)
+            if (DateTime.Parse(video.CreatedAt).ToUniversalTime() < (DateTime.UtcNow + OLDEST_PROCESSING_DATE))
             {
                 Trace.TraceInformation($"Too old video {video.Id} was created on {DateTime.Parse(video.CreatedAt).ToUniversalTime()}. Skipping.");
                 return;
@@ -216,7 +217,7 @@ namespace NW_Stream_Collector
             // Filter videos to only those with server names in them
             string serverId = twitchStreamMetadata.TryExtractServer(video.Title + " " + video.Description, out string server) ? server : null;
             AuthorInfo authorInfo = null;
-            if (authorInfos.TryGetValue($"twitch|{video.UserId}", out authorInfo))
+            if (authorInfos.TryGetValue($"twitch|{video.UserId}", out authorInfo) && authorInfo.LastUpdated < (DateTime.UtcNow + OLDEST_AUTHORINFO_DATE))
             {
                 if (serverId == null)
                 {
@@ -225,6 +226,10 @@ namespace NW_Stream_Collector
                 else if (serverId != authorInfo.ServerId)
                 {
                     Trace.TraceWarning($"Author {authorInfo.Id} has videos on multiple servers: {serverId}, {authorInfo.ServerId}. Preferring server in video title.");
+                    authorInfo.ServerId = serverId;
+                    authorInfo.LastUpdated = DateTime.Parse(video.CreatedAt).ToUniversalTime();
+                    File.WriteAllText(AUTHOR_INFO_PATH, JsonSerializer.Serialize(authorInfos));
+
                     streamCollectorStats.VideosWithServerInfoInTitle += 1;
                 }
                 streamCollectorStats.VideosWithServerInfoOnRecord += 1;
@@ -232,18 +237,28 @@ namespace NW_Stream_Collector
             else if (serverId != null)
             {
                 string authorId = $"twitch|{video.UserId}";
-                authorInfo = new AuthorInfo
+                if (authorInfo == null)
                 {
-                    Id = authorId,
-                    ServerId = serverId,
-                };
-                authorInfos.Add(authorId, authorInfo);
+                    authorInfo = new AuthorInfo
+                    {
+                        Id = authorId,
+                        ServerId = serverId,
+                        LastUpdated = DateTime.Parse(video.CreatedAt).ToUniversalTime(),
+                    };
+                    authorInfos.Add(authorId, authorInfo);
+                }
+                else
+                {
+                    Trace.TraceWarning($"Author {authorInfo.Id} with expired entry updated with new server: {serverId} was {authorInfo.ServerId}.");
+                    authorInfo.ServerId = serverId;
+                    authorInfo.LastUpdated = DateTime.Parse(video.CreatedAt).ToUniversalTime();
+                }
                 File.WriteAllText(AUTHOR_INFO_PATH, JsonSerializer.Serialize(authorInfos));
                 streamCollectorStats.VideosWithServerInfoInTitle += 1;
             }
             else
             {
-                Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Skipping.");
+                Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no recent author information for 'twitch|{video.UserId}'. Skipping.");
                 return;
                 //serverId = "unknown";
                 //Trace.TraceInformation($"Could not find server for video '{video.Id}' in '{video.Title}{video.Description}', and there is no author information for 'twitch|{video.UserId}'. Processing as '{serverId}' server.");

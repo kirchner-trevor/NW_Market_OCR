@@ -116,8 +116,6 @@ namespace NW_Market_Collector
 
         public static void Start(ApplicationConfiguration configuration)
         {
-            OcrEngine ocrEngine = new TesseractOcrEngine();
-
             Thread processThread = new Thread(async () =>
             {
                 MarketImageWriteOnlyRepository marketImageWriteOnlyRepository;
@@ -131,7 +129,7 @@ namespace NW_Market_Collector
                     marketImageWriteOnlyRepository = new S3MarketImageWriteOnlyRepository(s3Client, UpdateProgress);
                 }
 
-                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, new MarketImageDetector(ocrEngine), marketImageWriteOnlyRepository, ocrEngine);
+                MarketImageUploader marketImageUploader = new MarketImageUploader(configuration, ConsoleHUD, new MarketImageDetector(new TesseractOcrEngine()), marketImageWriteOnlyRepository, new TesseractOcrEngine());
                 while (isRunning)
                 {
                     DateTime startTime = DateTime.UtcNow;
@@ -146,7 +144,7 @@ namespace NW_Market_Collector
 
             Thread autoScreenshotThread = new Thread(() =>
             {
-                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(ConsoleHUD, new MarketImageDetector(ocrEngine));
+                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(ConsoleHUD, new MarketImageDetector(new TesseractOcrEngine()));
 
                 while (isRunning)
                 {
@@ -176,7 +174,7 @@ namespace NW_Market_Collector
                 }
                 else if (configuration.Mode == CollectorMode.Video)
                 {
-                    MarketImageGenerator marketImageGenerator = new VideoFileMarketImageGenerator(new MarketImageDetector(ocrEngine), new VideoImageExtractor());
+                    MarketImageGenerator marketImageGenerator = new VideoFileMarketImageGenerator(new MarketImageDetector(new TesseractOcrEngine()), new VideoImageExtractor());
 
                     while (isRunning)
                     {
@@ -203,7 +201,6 @@ namespace NW_Market_Collector
             finally
             {
                 processThread.Join();
-                ocrEngine.Dispose();
             }
             Console.Write("Press enter to exit");
             Console.ReadLine();

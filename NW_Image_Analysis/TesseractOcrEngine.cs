@@ -10,6 +10,7 @@ namespace NW_Image_Analysis
     {
         private TesseractEngine tesseractEngineForDecimals;
         private TesseractEngine tesseractOcrForLetters;
+        private TesseractEngine tesseractEngineForFastAnything;
 
         public TesseractOcrEngine()
         {
@@ -20,6 +21,9 @@ namespace NW_Image_Analysis
 
             tesseractOcrForLetters = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/best"), "eng", EngineMode.Default);
             tesseractOcrForLetters.SetVariable("tessedit_char_blacklist", "`~!@#$%^&*()-_=+[{]}\\|;:\"<.>/?");
+
+            tesseractEngineForFastAnything = new TesseractEngine(Path.Combine(Directory.GetCurrentDirectory(), "tessdata/normal"), "eng", EngineMode.Default);
+            tesseractEngineForFastAnything.SetVariable("tessedit_char_blacklist", "`~!@#$%^&*()-_=+[{]}\\|;:\"<.>/?");
         }
 
         public List<OcrTextArea> ExtractTextAreas(string path)
@@ -50,7 +54,7 @@ namespace NW_Image_Analysis
         {
             Rect ocrArea = new Rect(area.X, area.Y, area.Width, area.Height);
 
-            using (Page page = tesseractOcrForLetters.Process(image, ocrArea))
+            using (Page page = tesseractEngineForFastAnything.Process(image, ocrArea))
             {
                 return page.GetText();
             }
