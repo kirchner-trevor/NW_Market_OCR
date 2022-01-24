@@ -1,10 +1,10 @@
 ﻿using Fastenshtein;
 using NW_Image_Analysis;
 using NW_Market_Model;
+using SixLabors.ImageSharp;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;

@@ -1,7 +1,9 @@
-﻿using System;
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.ColorSpaces.Conversion;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using System;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -12,7 +14,7 @@ namespace NW_Image_Analysis
         private Rectangle DEFAULT_MARKET_AREA = new Rectangle { X = 696, Y = 326, Width = 1130, Height = 730 };
         private Point DEFAULT_SCREEN_SIZE = new Point(1920, 1080);
         private Rectangle DEFAULT_BLUE_BANNER_SAMPLE_AREA = new Rectangle { X = 950, Y = 15, Width = 50, Height = 50 };
-        private Color BLUE_BANNER_COLOR = Color.FromArgb(23, 51, 73);
+        private Rgba32 BLUE_BANNER_COLOR = new Rgba32(23, 51, 73);
         private const double BLUE_BANNER_AVERAGE_DIFFERENCE_LIMIT = 20;
         private Rectangle DEFAULT_TRADING_POST_HEADER_AREA = new Rectangle { X = 130, Y = 31, Width = 320, Height = 24 };
         private const string TRADING_POST_HEADER_TEXT = "TRADINGPOST.";
@@ -28,7 +30,7 @@ namespace NW_Image_Analysis
         }
 
         public bool ImageContainsTradingPost(string path)
-        {
+        { 
             bool containsBlueBanner = false;
 
             Trace.WriteLine($"Checking image for blue banner at '{path}'...");
@@ -37,7 +39,7 @@ namespace NW_Image_Analysis
             {
                 try
                 {
-                    using (Bitmap myBitmap = new Bitmap(path))
+                    using (Image<Rgba32> myBitmap = Image.Load<Rgba32>(path))
                     {
                         containsBlueBanner = ImageContainsTradingPost(myBitmap);
                     }
@@ -51,12 +53,12 @@ namespace NW_Image_Analysis
             return containsBlueBanner;
         }
 
-        public bool ImageContainsTradingPost(Bitmap myBitmap)
+        public bool ImageContainsTradingPost(Image<Rgba32> myBitmap)
         {
             return ImageContainsBlueBanner(myBitmap) && ImageContainsTradingPostHeader(myBitmap);
         }
 
-        public bool ImageContainsTradingPostHeader(Bitmap myBitmap)
+        public bool ImageContainsTradingPostHeader(Image<Rgba32> myBitmap)
         {
             ScreenAdjustmentParameters screenAdjustments = GetScreenAdjustmentsForWindow(myBitmap.Width, myBitmap.Height);
             Rectangle tradingPostHeaderArea = screenAdjustments.Adjust(DEFAULT_TRADING_POST_HEADER_AREA);
@@ -70,7 +72,7 @@ namespace NW_Image_Analysis
             return containsShortText || isWithinDistance;
         }
 
-        private bool ImageContainsBlueBanner(Bitmap myBitmap)
+        private bool ImageContainsBlueBanner(Image<Rgba32> myBitmap)
         {
             bool containsBlueBanner = false;
 
@@ -82,7 +84,7 @@ namespace NW_Image_Analysis
             {
                 for (int y = 0; y < blueBannerSampleArea.Height; y++)
                 {
-                    Color color = myBitmap.GetPixel(blueBannerSampleArea.X + x, blueBannerSampleArea.Y + y);
+                    Rgba32 color = myBitmap[blueBannerSampleArea.X + x, blueBannerSampleArea.Y + y];
                     totalDifference += Math.Sqrt(Math.Pow(color.R - BLUE_BANNER_COLOR.R, 2) + Math.Pow(color.G - BLUE_BANNER_COLOR.G, 2) + Math.Pow(color.B - BLUE_BANNER_COLOR.B, 2));
                 }
             }
@@ -137,7 +139,7 @@ namespace NW_Image_Analysis
 
             Trace.WriteLine($"Cleaning image at '{path}'...");
 
-            using (Bitmap original = new Bitmap(path))
+            using (Image<Rgba32> original = Image.Load<Rgba32>(path))
             {
                 Rectangle marketArea;
                 if (customMarketArea.HasValue)
@@ -149,21 +151,21 @@ namespace NW_Image_Analysis
                     marketArea = GetScreenAdjustmentsForWindow(original.Width, original.Height).Adjust(DEFAULT_MARKET_AREA);
                 }
 
-                using (Bitmap cropped = original.Clone(marketArea, PixelFormat.Format32bppArgb))
+                using (Image<Rgba32> cropped = original.Clone(_ => _.Crop(marketArea)))
                 {
                     const float limit = 0.2f;
                     for (int i = 0; i < cropped.Width; i++)
                     {
                         for (int j = 0; j < cropped.Height; j++)
                         {
-                            Color c = cropped.GetPixel(i, j);
-                            if (c.GetBrightness() > limit)
+                            Rgba32 c = cropped[i, j];
+                            if (new ColorSpaceConverter().ToHsl(c).L > limit)
                             {
-                                cropped.SetPixel(i, j, Color.Black);
+                                cropped[i, j] = Color.Black;
                             }
                             else
                             {
-                                cropped.SetPixel(i, j, Color.White);
+                                cropped[i, j] = Color.White;
                             }
                         }
                     }

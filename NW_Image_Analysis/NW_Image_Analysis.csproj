@@ -7,11 +7,9 @@
   <ItemGroup>
     <PackageReference Include="Fastenshtein" Version="1.0.0.8" />
     <PackageReference Include="OpenCvSharp4" Version="4.5.5.20211231" />
-    <PackageReference Include="OpenCvSharp4.runtime.uwp" Version="4.5.5.20211231" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.5.5.20211231" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="1.0.4" />
     <PackageReference Include="Tesseract" Version="4.1.1" />
-    <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
-    <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
-    <PackageReference Include="Tesseract.Drawing" Version="4.1.1" />
   </ItemGroup>
 
   <ItemGroup>

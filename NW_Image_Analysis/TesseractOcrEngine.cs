@@ -1,6 +1,8 @@
-﻿using System;
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
+using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using Tesseract;
 
@@ -34,11 +36,15 @@ namespace NW_Image_Analysis
             return textAreas;
         }
 
-        public string ExtractText(Bitmap bitmap, Rectangle area)
+        public string ExtractText(Image<Rgba32> bitmap, Rectangle area)
         {
-            using (Pix image = PixConverter.ToPix(bitmap))
+            using (MemoryStream memoryStream = new MemoryStream())
             {
-                return ExtractText(image, area);
+                bitmap.Save(memoryStream, PngFormat.Instance);
+                using (Pix image = Pix.LoadFromMemory(memoryStream.ToArray()))
+                {
+                    return ExtractText(image, area);
+                }
             }
         }
 

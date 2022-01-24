@@ -1,13 +1,14 @@
-﻿using System;
+﻿using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using System;
 using System.Collections.Generic;
-using System.Drawing;
 
 namespace NW_Image_Analysis
 {
     public interface OcrEngine : IDisposable
     {
         List<OcrTextArea> ExtractTextAreas(string path);
-        string ExtractText(Bitmap bitmap, Rectangle area);
+        string ExtractText(Image<Rgba32> bitmap, Rectangle area);
         string ExtractText(string path);
     }
 

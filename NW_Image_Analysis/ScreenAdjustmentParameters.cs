@@ -1,5 +1,5 @@
-﻿using System;
-using System.Drawing;
+﻿using SixLabors.ImageSharp;
+using System;
 
 namespace NW_Image_Analysis
 {

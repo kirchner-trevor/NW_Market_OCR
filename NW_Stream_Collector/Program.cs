@@ -1,5 +1,7 @@
 ﻿using NW_Image_Analysis;
 using NW_Market_Model;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using StreamApi;
 using System;
 using System.Collections.Generic;
@@ -57,10 +59,10 @@ namespace NW_Stream_Collector
         private const string NEW_WORLD_GAME_ID = "493597";
         private const string IMAGE_OUTPUT_DIRECTORY = "images";
         private const string VIDEO_OUTPUT_DIRECTORY = "videos";
-        private const string FULL_MARKET_VIDEO_OUTPUT_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\NW_Market_Collector\bin\Debug\net5.0-windows\videos";
-        private const string PROCESSED_VIDEOS_PATH = "processedVideos.json";
-        private const string AUTHOR_INFO_PATH = "authorInfo.json";
-        private const string MARKET_SEGMENTS_PATH = "testMarketSegments.json";
+        private const string FULL_MARKET_VIDEO_OUTPUT_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\NW_Market_Collector\bin\Debug\net5.0\videos";
+        private static readonly string PROCESSED_VIDEOS_PATH = Path.Combine(Program.DATA_DIRECTORY, "processedVideos.json");
+        private static readonly string AUTHOR_INFO_PATH = Path.Combine(Program.DATA_DIRECTORY, "authorInfo.json");
+        private static readonly string MARKET_SEGMENTS_PATH = Path.Combine(Program.DATA_DIRECTORY, "testMarketSegments.json");
         private static readonly string TWITCH_USERS_TO_FOLLOW_PATH = Path.Combine(Program.DATA_DIRECTORY, "followedTwitchUsers.json");
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
@@ -317,7 +319,7 @@ namespace NW_Stream_Collector
 
                     if (imagePaths.Any())
                     {
-                        using (Image firstImage = Image.FromFile(imagePaths.First()))
+                        using (Image<Rgba32> firstImage = Image.Load<Rgba32>(imagePaths.First()))
                         {
                             if (firstImage.Height < MINIMUM_RESOLUTION_FOR_PROCESSING)
                             {
