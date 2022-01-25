@@ -21,6 +21,7 @@ namespace NW_Market_OCR
         private const int MIN_MATCHING_DATAPOINTS_FOR_SKIP = 30;
         private const int MIN_LISTINGS_FOR_AVERAGE_PRICE_ADJUSTMENT = 9;
         private const int MAX_AUTOCORRECT_DISTANCE = 7;
+        private const float MAX_AUTOCORRECT_RATIO = 1 / 3f;
         private const string DATA_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data";
         private const string IMAGES_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\Data\Images";
         private static OcrEngine ocrEngine = new TesseractOcrEngine();
@@ -307,8 +308,9 @@ namespace NW_Market_OCR
             }
 
             // Distance is too far to use correction
-            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance > (value.Length / 2f))
+            if (minDistance > MAX_AUTOCORRECT_DISTANCE || minDistance > Math.Floor(value.Length * MAX_AUTOCORRECT_RATIO))
             {
+                Trace.WriteLine($"Failed to autocorrect for {value} using {minDistanceItemName} with distance {minDistance}. Distance was above absolute max of {MAX_AUTOCORRECT_DISTANCE} or ratio max of {Math.Floor(value.Length * MAX_AUTOCORRECT_RATIO)}.");
                 return (null, -1);
             }
 
@@ -349,8 +351,6 @@ namespace NW_Market_OCR
                     marketOCRStats.MarketListingsOmittedForName += 1;
                 }
             }
-
-            CorrectMarketListingPricesAscending(marketListings);
 
             if (IsSimilarSetOfMarketListings(marketListings))
             {
@@ -398,6 +398,7 @@ namespace NW_Market_OCR
             database.SaveDatabaseToDisk();
         }
 
+        // Disabled because it was correcting prices to weird values when it had issues reading prices.
         private static void CorrectMarketListingPricesAscending(List<MarketListing> marketListings)
         {
             bool updatedPrice;
