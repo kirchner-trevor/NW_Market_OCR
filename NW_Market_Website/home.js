@@ -276,20 +276,20 @@ export default {
                     sortable: true,
                     sortByFormatted: true,
                     formatter: (value, key, item) => {
-                        return item != null ? item.Instances[0].Available : null;
+                        return item != null ? item.Instances[item.Instances.length - 1].Available : null;
                     }
                 },
                 {
                     key: 'expires',
                     formatter: (value, key, item) => {
-                        let hoursRemaining = this.getHoursFromTimeSpan(item.Instances[0].TimeRemaining);
-                        return item != null ? moment(item.Instances[0].Time).add(hoursRemaining, 'h').fromNow() : null;
+                        let hoursRemaining = this.getHoursFromTimeSpan(item.Instances[item.Instances.length - 1].TimeRemaining);
+                        return item != null ? moment(item.Instances[item.Instances.length - 1].Time).add(hoursRemaining, 'h').fromNow() : null;
                     }
                 },
                 {
                     key: 'lastUpdated',
                     formatter: (value, key, item) => {
-                        return item != null ? moment(item.Instances[0].Time).fromNow() : null;
+                        return item != null ? moment(item.Instances[item.Instances.length - 1].Time).fromNow() : null;
                     }
                 }
             ],

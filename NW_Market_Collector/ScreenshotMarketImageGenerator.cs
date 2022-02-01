@@ -8,11 +8,13 @@ namespace NW_Market_Collector
 {
     public class ScreenshotMarketImageGenerator : MarketImageGenerator
     {
+        private readonly ApplicationConfiguration Configuration;
         private readonly ConsoleHUDWriter ConsoleHUD;
         private readonly MarketImageDetector MarketImageDetector;
 
-        public ScreenshotMarketImageGenerator(ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector)
+        public ScreenshotMarketImageGenerator(ApplicationConfiguration configuration, ConsoleHUDWriter consoleHUDWriter, MarketImageDetector marketImageDetector)
         {
+            Configuration = configuration;
             ConsoleHUD = consoleHUDWriter;
             MarketImageDetector = marketImageDetector;
         }
@@ -71,11 +73,11 @@ namespace NW_Market_Collector
             }
         }
 
-        private string MoveNewImageToCaptures(string newPath)
+        private string MoveNewImageToCaptures(string path)
         {
-            string capturePath = Path.Combine(Path.Combine(Directory.GetCurrentDirectory(), "captures", $"market_{Guid.NewGuid():D}.png"));
-            File.Move(newPath, capturePath, true);
-            return capturePath;
+            string newPath = Path.Combine(Path.Combine(Directory.GetCurrentDirectory(), "captures", $"market_{Configuration.User}_{Configuration.Server}_{Guid.NewGuid():D}.png"));
+            File.Move(path, newPath, true);
+            return newPath;
         }
     }
 }

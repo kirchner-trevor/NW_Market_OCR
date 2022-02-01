@@ -140,6 +140,7 @@ namespace NW_Stream_Collector
                 foreach (Video video in twitchVideos)
                 {
                     WaitIfTotalBytesDownloadedIsAboveThreshold();
+                    WaitIfNonActivePeriod();
                     FindMarketSegments(video, processedVideos, authorInfos, segmentsContainingMarket, streamCollectorStats);
                 }
 
@@ -161,6 +162,19 @@ namespace NW_Stream_Collector
                     Thread.Sleep(TimeSpan.FromHours(1));
                 }
             } while (totalBytesDownloadedInLastDay >= DAILY_DOWNLOAD_BYTE_LIMIT);
+        }
+
+        private void WaitIfNonActivePeriod()
+        {
+            const int MAX_HOUR = 12;
+            do
+            {
+                if (DateTime.Now.Hour > MAX_HOUR)
+                {
+                    Trace.WriteLine($"Current hour {DateTime.Now.Hour} is not within the active time window of 0 - {MAX_HOUR}, sleeping for 1 hr!");
+                    Thread.Sleep(TimeSpan.FromHours(1));
+                }
+            } while (DateTime.Now.Hour > MAX_HOUR);
         }
 
         private long GetTotalBytesDownloadedInLastDay()

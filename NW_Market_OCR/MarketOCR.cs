@@ -82,16 +82,62 @@ namespace NW_Market_OCR
             MarketImageRepository localMarketImageRepository = new FileSystemMarketImageRepository(IMAGES_DIRECTORY);
             MarketImageRepository remoteMarketImageRepository = new S3MarketImageRepository(s3Client);
 
+            DateTime lastCleanTime = DateTime.MinValue;
+
             while (true)
             {
-                marketOCRStats = new MarketOCRStats();
-                marketOCRStatsRepository.Contents.Stats.Add(marketOCRStats);
+                if (DateTime.Now.Hour <= 17)
+                {
+                    marketOCRStats = new MarketOCRStats();
+                    marketOCRStatsRepository.Contents.Stats.Add(marketOCRStats);
 
-                await ProcessImages(database, s3Client, localMarketImageRepository);
-                await ProcessImages(database, s3Client, remoteMarketImageRepository);
+                    await ProcessImages(database, s3Client, localMarketImageRepository);
+                    await ProcessImages(database, s3Client, remoteMarketImageRepository);
+                }
+                else
+                {
+                    Trace.WriteLine($"Current hour {DateTime.Now.Hour} is not within the active time window of 0 - 17, skipping processing!");
+                }
+
+                if (DateTime.UtcNow - lastCleanTime > TimeSpan.FromHours(1))
+                {
+                    await CleanupExpiredListings(database, s3Client, configurationDatabase);
+                    lastCleanTime = DateTime.UtcNow;
+                }
 
                 Trace.WriteLine($"[{DateTime.UtcNow}] Sleeping for 15 minutes!");
                 Thread.Sleep(TimeSpan.FromMinutes(15));
+            }
+        }
+
+        private static async Task CleanupExpiredListings(MarketDatabase database, AmazonS3Client s3Client, ConfigurationDatabase configurationDatabase)
+        {
+            foreach (ServerListInfo server in configurationDatabase.Content.ServerList)
+            {
+                database.SetServer(server.Id);
+                database.LoadDatabaseFromDisk();
+
+                if (!itemsAddedToDatabase.ContainsKey(server.Id))
+                {
+                    itemsAddedToDatabase.Add(server.Id, 0);
+                    lastDatabaseUploadTime.Add(server.Id, database.Updated);
+                }
+
+                // Delete all entries that expired more than 8 days ago
+                int listingsRemoved = database.Listings.RemoveAll(_ => _.Latest.Time + _.Latest.TimeRemaining < DateTime.UtcNow.AddDays(-8));
+                marketOCRStats.MarketListingsRemovedForExpiring += listingsRemoved;
+
+                if (listingsRemoved > 0)
+                {
+                    Trace.WriteLine($"Found {listingsRemoved} expired items for server {server.Name}, forcing upload.");
+
+                    database.SaveDatabaseToDisk();
+
+                    marketOCRStats.To = DateTime.UtcNow;
+                    marketOCRStatsRepository.SaveDatabaseToDisk();
+
+                    await TryUploadDatabaseRateLimited(s3Client, database, server.Id, force: true);
+                }
             }
         }
 
@@ -113,7 +159,7 @@ namespace NW_Market_OCR
                         lastDatabaseUploadTime.Add(server, database.Updated);
                     }
 
-                    Trace.WriteLine($"Extracting {serverMarketImages.Key} market data from {serverMarketImages.Count()} images...");
+                    Trace.WriteLine($"Extracting {serverMarketImages.Key} market data for {server} from {serverMarketImages.Count()} images...");
                     foreach (MarketImage nwMarketImage in serverMarketImages)
                     {
                         string processedPath = Path.Combine(Directory.GetCurrentDirectory(), "processed.png");

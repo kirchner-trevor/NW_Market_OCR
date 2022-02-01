@@ -144,7 +144,7 @@ namespace NW_Market_Collector
 
             Thread autoScreenshotThread = new Thread(() =>
             {
-                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(ConsoleHUD, new MarketImageDetector(new TesseractOcrEngine()));
+                MarketImageGenerator marketImageGenerator = new ScreenshotMarketImageGenerator(configuration, ConsoleHUD, new MarketImageDetector(new TesseractOcrEngine()));
 
                 while (isRunning)
                 {
