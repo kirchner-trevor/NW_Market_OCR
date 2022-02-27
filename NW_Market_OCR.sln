@@ -23,7 +23,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Image_Analysis", "NW_Ima
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Market_OCR_Tests", "NW_Market_OCR_Tests\NW_Market_OCR_Tests.csproj", "{9F7B7D15-28D5-4457-89C5-4E5749A87C54}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NW_Stream_Collector_Tests", "NW_Stream_Collector_Tests\NW_Stream_Collector_Tests.csproj", "{A3A7984A-2878-4241-8821-BD2B42319F84}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NW_Stream_Collector_Tests", "NW_Stream_Collector_Tests\NW_Stream_Collector_Tests.csproj", "{A3A7984A-2878-4241-8821-BD2B42319F84}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

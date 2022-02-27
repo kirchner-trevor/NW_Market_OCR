@@ -28,6 +28,7 @@ namespace NW_Stream_Collector
         {
             string clientId = args.Length > 0 ? args[0] : null;
             string secret = args.Length > 1 ? args[1] : null;
+            string dataDirectory = args.Length > 2 ? args[2] : DATA_DIRECTORY;
             Trace.Listeners.Add(new ConsoleTraceListener());
 
             TwitchAPI twitchApi = new TwitchAPI();
@@ -35,13 +36,13 @@ namespace NW_Stream_Collector
             twitchApi.Settings.Secret = secret;
 
             StreamApiClient streamApiClient = new StreamApiClient();
-            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(DATA_DIRECTORY);
+            ConfigurationDatabase configurationDatabase = new ConfigurationDatabase(dataDirectory);
             OcrEngine ocrEngine = new TesseractOcrEngine();
             MarketImageDetector marketImageDetector = new MarketImageDetector(ocrEngine);
             VideoImageExtractor videoImageExtractor = new VideoImageExtractor();
-            StreamCollectorStatsRepository streamCollectorStatsRepository = new StreamCollectorStatsRepository(DATA_DIRECTORY);
+            StreamCollectorStatsRepository streamCollectorStatsRepository = new StreamCollectorStatsRepository(dataDirectory);
             TwitchStreamMetadata twitchStreamMetadata = new TwitchStreamMetadata(configurationDatabase);
-            StreamCollector streamCollector = new StreamCollector(twitchApi, streamApiClient, configurationDatabase, marketImageDetector, videoImageExtractor, streamCollectorStatsRepository, twitchStreamMetadata);
+            StreamCollector streamCollector = new StreamCollector(dataDirectory, twitchApi, streamApiClient, configurationDatabase, marketImageDetector, videoImageExtractor, streamCollectorStatsRepository, twitchStreamMetadata);
 
             try
             {
@@ -60,14 +61,16 @@ namespace NW_Stream_Collector
         private const string IMAGE_OUTPUT_DIRECTORY = "images";
         private const string VIDEO_OUTPUT_DIRECTORY = "videos";
         private const string FULL_MARKET_VIDEO_OUTPUT_DIRECTORY = @"C:\Users\kirch\source\repos\NW_Market_OCR\NW_Market_Collector\bin\Debug\net5.0\videos";
-        private static readonly string PROCESSED_VIDEOS_PATH = Path.Combine(Program.DATA_DIRECTORY, "processedVideos.json");
-        private static readonly string AUTHOR_INFO_PATH = Path.Combine(Program.DATA_DIRECTORY, "authorInfo.json");
-        private static readonly string MARKET_SEGMENTS_PATH = Path.Combine(Program.DATA_DIRECTORY, "testMarketSegments.json");
-        private static readonly string TWITCH_USERS_TO_FOLLOW_PATH = Path.Combine(Program.DATA_DIRECTORY, "followedTwitchUsers.json");
+        private readonly string PROCESSED_VIDEOS_PATH;
+        private readonly string AUTHOR_INFO_PATH;
+        private readonly string MARKET_SEGMENTS_PATH;
+        private readonly string TWITCH_USERS_TO_FOLLOW_PATH;
         private const int VIDEO_GET_FAILURES_MAX = 5;
         private const int VIDEO_CLIP_EXTRACTION_INTERVAL_IN_MINS = 5;
         private const int MINIMUM_RESOLUTION_FOR_PROCESSING = 1080;
         private const long DAILY_DOWNLOAD_BYTE_LIMIT = 20_000_000_000; // 20gb
+        private const int MAX_ALL_VIDEOS_COUNT = 520;
+        private const int MAX_HOUR = 24;
         private static readonly TimeSpan OLDEST_PROCESSING_DATE = TimeSpan.FromDays(-8);
         private static readonly TimeSpan OLDEST_AUTHORINFO_DATE = TimeSpan.FromDays(-30);
         private readonly TwitchAPI twitchApi;
@@ -78,8 +81,13 @@ namespace NW_Stream_Collector
         private readonly StreamCollectorStatsRepository streamCollectorStatsRepository;
         private readonly TwitchStreamMetadata twitchStreamMetadata;
 
-        public StreamCollector(TwitchAPI twitchApi, StreamApiClient livestreamerApiClient, ConfigurationDatabase configurationDatabase, MarketImageDetector marketImageDetector, VideoImageExtractor videoImageExtractor, StreamCollectorStatsRepository streamCollectorStatsRepository, TwitchStreamMetadata twitchStreamMetadata)
+        public StreamCollector(string dataDirectory, TwitchAPI twitchApi, StreamApiClient livestreamerApiClient, ConfigurationDatabase configurationDatabase, MarketImageDetector marketImageDetector, VideoImageExtractor videoImageExtractor, StreamCollectorStatsRepository streamCollectorStatsRepository, TwitchStreamMetadata twitchStreamMetadata)
         {
+            PROCESSED_VIDEOS_PATH = Path.Combine(dataDirectory, "processedVideos.json");
+            AUTHOR_INFO_PATH = Path.Combine(dataDirectory, "authorInfo.json");
+            MARKET_SEGMENTS_PATH = Path.Combine(dataDirectory, "testMarketSegments.json");
+            TWITCH_USERS_TO_FOLLOW_PATH = Path.Combine(dataDirectory, "followedTwitchUsers.json");
+
             this.twitchApi = twitchApi;
             this.livestreamerApiClient = livestreamerApiClient;
             this.configurationDatabase = configurationDatabase;
@@ -104,7 +112,7 @@ namespace NW_Stream_Collector
             }
 
             Dictionary<string, AuthorInfo> authorInfos = new Dictionary<string, AuthorInfo>();
-            if (File.Exists(PROCESSED_VIDEOS_PATH))
+            if (File.Exists(AUTHOR_INFO_PATH))
             {
                 authorInfos = JsonSerializer.Deserialize<Dictionary<string, AuthorInfo>>(File.ReadAllText(AUTHOR_INFO_PATH));
             }
@@ -125,17 +133,21 @@ namespace NW_Stream_Collector
                 Trace.TraceInformation($"[{DateTime.UtcNow}] Fetching next set of videos.");
 
                 List<Video> twitchVideos = new List<Video>();
-                GetUsersResponse getUsersResponse = await twitchApi.Helix.Users.GetUsersAsync(logins: twitchUsersToFollow);
-                foreach (string userId in getUsersResponse.Users.Select(_ => _.Id))
+                if (twitchUsersToFollow.Any())
                 {
-                    List<Video> newUserVideos = await GetAllVideos(cursor => twitchApi.Helix.Videos.GetVideoAsync(userId: userId, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive));
-                    twitchVideos.AddRange(newUserVideos);
+                    GetUsersResponse getUsersResponse = await twitchApi.Helix.Users.GetUsersAsync(logins: twitchUsersToFollow);
+                    foreach (string userId in getUsersResponse.Users.Select(_ => _.Id))
+                    {
+                        List<Video> newUserVideos = await GetAllVideos(cursor => twitchApi.Helix.Videos.GetVideoAsync(userId: userId, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive));
+                        twitchVideos.AddRange(newUserVideos);
+                    }
                 }
 
                 List<Video> newGlobalVideos = await GetAllVideos(cursor => twitchApi.Helix.Videos.GetVideoAsync(gameId: NEW_WORLD_GAME_ID, after: cursor, language: "en", period: Period.Day, sort: VideoSort.Views, type: VideoType.Archive));
                 twitchVideos.AddRange(newGlobalVideos);
 
                 streamCollectorStats.VideosFound += twitchVideos.Count;
+                Trace.TraceInformation($"Found {twitchVideos.Count} videos to process.");
 
                 foreach (Video video in twitchVideos)
                 {
@@ -151,10 +163,10 @@ namespace NW_Stream_Collector
 
         private void WaitIfTotalBytesDownloadedIsAboveThreshold()
         {
-            long totalBytesDownloadedInLastDay;
+            double totalBytesDownloadedInLastDay;
             do
             {
-                totalBytesDownloadedInLastDay = GetTotalBytesDownloadedInLastDay();
+                totalBytesDownloadedInLastDay = GetAverageDailyTotalBytesDownloadedInLastWeek();
                 Trace.TraceInformation($"StreamCollector has downloaded {totalBytesDownloadedInLastDay / 1_000_000_000f} Gb in the last 24 hours!");
                 if (totalBytesDownloadedInLastDay >= DAILY_DOWNLOAD_BYTE_LIMIT)
                 {
@@ -166,7 +178,6 @@ namespace NW_Stream_Collector
 
         private void WaitIfNonActivePeriod()
         {
-            const int MAX_HOUR = 12;
             do
             {
                 if (DateTime.Now.Hour > MAX_HOUR)
@@ -177,11 +188,11 @@ namespace NW_Stream_Collector
             } while (DateTime.Now.Hour > MAX_HOUR);
         }
 
-        private long GetTotalBytesDownloadedInLastDay()
+        private double GetAverageDailyTotalBytesDownloadedInLastWeek()
         {
             long totalBytes = 0;
             double totalHoursSummed = 0;
-            DateTime oneDayAgo = DateTime.UtcNow.AddDays(-1);
+            DateTime oneDayAgo = DateTime.UtcNow.AddDays(-7);
             foreach(StreamCollectorStats stats in streamCollectorStatsRepository.Contents.Stats.Where(_ => _.To >= oneDayAgo).OrderByDescending(_ => _.To))
             {
                 TimeSpan duration = stats.To - stats.From;
@@ -191,21 +202,10 @@ namespace NW_Stream_Collector
                     continue;
                 }
 
-                if (totalHoursSummed + duration.TotalHours >= 24f)
-                {
-                    double bytesPerHour = stats.VideoBytesDownloaded / duration.TotalHours;
-                    double applicableDurationHours = totalHoursSummed + duration.TotalHours - 24f;
-                    totalHoursSummed += applicableDurationHours; 
-                    totalBytes += (long)(applicableDurationHours * bytesPerHour);
-                    break;
-                }
-                else
-                {
-                    totalHoursSummed += duration.TotalHours;
-                    totalBytes += stats.VideoBytesDownloaded;
-                }
+                totalHoursSummed += duration.TotalHours;
+                totalBytes += stats.VideoBytesDownloaded;
             }
-            return totalBytes;
+            return 24f * totalBytes / totalHoursSummed;
         }
 
         // For each video get the duration and then
@@ -428,7 +428,7 @@ namespace NW_Stream_Collector
             streamCollectorStatsRepository.SaveDatabaseToDisk();
         }
 
-        private async Task<List<Video>> GetAllVideos(Func<string, Task<GetVideosResponse>> getVideos, int maxVideos = 520)
+        private async Task<List<Video>> GetAllVideos(Func<string, Task<GetVideosResponse>> getVideos, int maxVideos = MAX_ALL_VIDEOS_COUNT)
         {
             List<Video> twitchVideos = new List<Video>();
 
@@ -445,15 +445,16 @@ namespace NW_Stream_Collector
                     cursor = getVideosResponse.Pagination.Cursor;
                     hasMoreVideos = cursor != null;
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
                     twitchApiCallFailures++;
 
                     int sleepTimeMs = (1 + new Random().Next((int)Math.Pow(2, twitchApiCallFailures))) * 1000;
-                    Trace.TraceInformation($"Twitch API call failed ({twitchApiCallFailures}), sleeping for {sleepTimeMs} ms then retrying.");
+                    Trace.TraceInformation($"Twitch API call failed ({twitchApiCallFailures}), sleeping for {sleepTimeMs} ms then retrying.\n{e}");
+                    Thread.Sleep(sleepTimeMs);
                 }
 
-                if (cursor == null)
+                if (!hasMoreVideos)
                 {
                     Trace.TraceWarning($"Found null cursor after processing cursor '{cursor}'. This means we've hit our page limit of 500.");
                     break;

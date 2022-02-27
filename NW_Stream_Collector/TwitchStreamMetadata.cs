@@ -12,7 +12,7 @@ namespace NW_Stream_Collector
 
         public TwitchStreamMetadata(ConfigurationDatabase configurationDatabase)
         {
-            serverNamesLowercase = configurationDatabase.Content.ServerList.Where(_ => _.Name != "Ophir").ToDictionary(_ => _.Name?.ToLowerInvariant(), _ => _.Id);
+            serverNamesLowercase = configurationDatabase?.Content?.ServerList?.Where(_ => _.Name != "Ophir").ToDictionary(_ => _.Name?.ToLowerInvariant(), _ => _.Id) ?? new Dictionary<string, string>();
         }
 
         //public bool TryExtractServer(string text, out string server)
